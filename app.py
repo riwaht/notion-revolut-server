@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
-
-API_KEY = os.getenv("API_KEY", "your-secret-key")
+API_KEY = os.getenv("API_KEY", "default-if-not-set")
 
 @app.get("/")
 def root():
