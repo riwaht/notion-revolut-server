@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -8,14 +7,15 @@ import socketserver
 import webbrowser
 import requests
 from dotenv import load_dotenv
+from notion_utils import post_transaction_to_notion
+
 load_dotenv()
 
-# Load your TrueLayer credentials from env vars
-CLIENT_ID = os.getenv("TL_CLIENT_ID")
-CLIENT_SECRET = os.getenv("TL_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("TL_REDIRECT_URI")
-AUTH_BASE = os.getenv("TL_AUTH_BASE")
-API_BASE = os.getenv("TL_API_BASE")
+REDIRECT_URI = os.getenv("REDIRECT_URI")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+AUTH_BASE = "https://auth.truelayer.com"
+API_BASE = "https://api.truelayer.com"
 
 SCOPES = ["info", "accounts", "balance", "transactions", "offline_access"]
 
@@ -34,15 +34,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def get_auth_code():
     params = {
-    "response_type": "code",
-    "client_id": CLIENT_ID,
-    "scope": " ".join(SCOPES),
-    "redirect_uri": REDIRECT_URI,
-    "providers": "pl-ob-revolut",
-    "enable_mock": "false",
-    "nonce": str(time.time()),
-    "state": "xyz",
-}
+        "response_type": "code",
+        "client_id": CLIENT_ID,
+        "scope": " ".join(SCOPES),
+        "redirect_uri": REDIRECT_URI,
+        "providers": "pl-ob-revolut",
+        "enable_mock": "false",
+        "nonce": str(time.time()),
+        "state": "xyz",
+    }
     url = AUTH_BASE + "?" + urllib.parse.urlencode(params)
     print("🔗 Opening browser to authorize Revolut...")
     with socketserver.TCPServer(("", 3000), Handler) as httpd:
@@ -63,10 +63,8 @@ def exchange_token(code):
     r.raise_for_status()
     token_data = r.json()
 
-    # Save the tokens
     with open("tokens.json", "w") as f:
-        json.dump(token_data, f, indent=2)
-
+        json.dump(token_data, f)
     return token_data["access_token"]
 
 def refresh_access_token(refresh_token):
@@ -77,15 +75,10 @@ def refresh_access_token(refresh_token):
         "refresh_token": refresh_token,
     }
     r = requests.post(f"{AUTH_BASE}/connect/token", data=data)
-    print("♻️ Refresh token response:", r.status_code)
-    print("Body:", r.text)
     r.raise_for_status()
     token_data = r.json()
-
-    # Overwrite old tokens
     with open("tokens.json", "w") as f:
-        json.dump(token_data, f, indent=2)
-
+        json.dump(token_data, f)
     return token_data["access_token"]
 
 def get_accounts(token):
@@ -98,10 +91,12 @@ def get_transactions(token, account_id):
     r.raise_for_status()
     return r.json()["results"]
 
+def is_exchange_transaction(tx):
+    return "exchanged to" in tx["description"].lower() or "exchanged from" in tx["description"].lower()
+
 def main():
     token = None
 
-    # Try loading saved token first
     if os.path.exists("tokens.json"):
         with open("tokens.json") as f:
             token_data = json.load(f)
@@ -111,7 +106,6 @@ def main():
         except Exception as e:
             print("⚠️ Refresh failed, falling back to full auth:", e)
 
-    # Fallback to full auth if needed
     if not token:
         code = get_auth_code()
         token = exchange_token(code)
@@ -125,8 +119,19 @@ def main():
         print(f"\n📒 {account['display_name']} ({account['account_type']}) — {account['currency']}")
         txns = get_transactions(token, account["account_id"])
         print(f"💳 {len(txns)} transactions:")
-        for tx in txns[:5]:
+
+        for tx in txns[:10]:
             print(f"- {tx['timestamp']} | {tx['description']} | {tx['amount']} {tx['currency']}")
+
+            if is_exchange_transaction(tx):
+                if tx['amount'] > 0:
+                    post_transaction_to_notion(tx, account, is_income=True)
+                else:
+                    post_transaction_to_notion(tx, account, is_income=False)
+            elif tx['amount'] < 0:
+                post_transaction_to_notion(tx, account, is_income=False)
+            else:
+                post_transaction_to_notion(tx, account, is_income=True)
 
 if __name__ == "__main__":
     main()
