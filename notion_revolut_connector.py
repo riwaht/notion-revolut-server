@@ -8,14 +8,15 @@ import webbrowser
 import requests
 from dotenv import load_dotenv
 from notion_utils import post_transaction_to_notion
+from datetime import datetime, timezone
 
 load_dotenv()
 
-REDIRECT_URI = os.getenv("REDIRECT_URI")
-CLIENT_ID = os.getenv("CLIENT_ID")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-AUTH_BASE = "https://auth.truelayer.com"
-API_BASE = "https://api.truelayer.com"
+REDIRECT_URI = os.getenv("TL_REDIRECT_URI")
+CLIENT_ID = os.getenv("TL_CLIENT_ID")
+CLIENT_SECRET = os.getenv("TL_CLIENT_SECRET")
+AUTH_BASE = os.getenv("TL_AUTH_BASE", "https://auth.truelayer.com")
+API_BASE = os.getenv("TL_API_BASE", "https://api.truelayer.com")
 
 SCOPES = ["info", "accounts", "balance", "transactions", "offline_access"]
 
@@ -96,6 +97,7 @@ def is_exchange_transaction(tx):
 
 def main():
     token = None
+    CUTOFF_TIMESTAMP = datetime(2025, 8, 17, 14, 0, 0, tzinfo=timezone.utc)
 
     if os.path.exists("tokens.json"):
         with open("tokens.json") as f:
@@ -121,6 +123,10 @@ def main():
         print(f"💳 {len(txns)} transactions:")
 
         for tx in txns[:10]:
+            tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
+            if tx_time <= CUTOFF_TIMESTAMP:
+                continue  # Skip this transaction
+
             print(f"- {tx['timestamp']} | {tx['description']} | {tx['amount']} {tx['currency']}")
 
             if is_exchange_transaction(tx):

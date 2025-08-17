@@ -1,5 +1,6 @@
 # category_mapper.py
 
+# Expense category keywords
 CATEGORY_KEYWORDS = {
     "Food": [
         "restaurant", "coffee", "kebab", "burger", "pizza", "bar", "food", "café", "cafe", "lunch", "dinner", "eatery"
@@ -37,9 +38,18 @@ CATEGORY_KEYWORDS = {
     "Others": []
 }
 
+# Income category keywords
+INCOME_CATEGORY_KEYWORDS = {
+    "Salary": ["salary", "paycheck", "wage", "employer"],
+    "Parents": ["dad", "mom", "mother", "father", "parent", "family"],
+    "Savings": ["revolut vault", "vault income", "interest"],
+    "Repaid": ["repaid", "returned", "refund", "reimbursement", "payback"],
+    "Others": []
+}
+
 DEFAULT_CATEGORY = "Others"
 
-def categorize_transaction(description: str) -> str:
+def categorize_transaction(description: str, is_income: bool = False) -> str:
     """
     Map a transaction description to a category based on keywords.
     """
@@ -48,7 +58,9 @@ def categorize_transaction(description: str) -> str:
 
     description = description.lower()
 
-    for category, keywords in CATEGORY_KEYWORDS.items():
+    category_map = INCOME_CATEGORY_KEYWORDS if is_income else CATEGORY_KEYWORDS
+
+    for category, keywords in category_map.items():
         for keyword in keywords:
             if keyword in description:
                 return category

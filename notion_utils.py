@@ -22,27 +22,36 @@ DB_IDS = {
 
 # Static mappings from names to Notion relation IDs
 CATEGORY_IDS = {
-    "Food": "💰food-id",
-    "Transport": "🚗transport-id",
-    "Beauty": "💄beauty-id",
-    "Gifts": "🎁gifts-id",
-    "Health": "🧪health-id",
-    "Subscription": "📦subscription-id",
-    "Gym": "🏋️‍♀️gym-id",
-    "Savings": "🏦savings-id",
-    "Travel": "✈️travel-id",
-    "Free Time": "🎭free-time-id",
-    "Necessities": "🛒necessities-id",
-    "Others": "📂others-id",
+    "Food": "12e364a1215e8144817beb04c569ea05",
+    "Transport": "12e364a1215e81cdbe08f0a9cbb58a64",
+    "Beauty": "12e364a1215e8041bba4dc6a1dfbf0ef",
+    "Gifts": "12e364a1215e8103a271fd24cebd6148",
+    "Health": "233364a1215e801ba547ed5e48b38d3d",
+    "Subscription": "179364a1215e806481bffd675a74e97e",
+    "Gym": "12e364a1215e81eea2fcc9acb982d790",
+    "Savings": "12e364a1215e80c4bacfdee3004f32b3",
+    "Travel": "12e364a1215e8083a389c6dbf7ef8dac",
+    "Free Time": "12e364a1215e818e98d0e8abcdadf58c",
+    "Necessities": "156364a1215e80dcbebddd89ba57b4ab",
+    "Others": "12e364a1215e81999522f7421e1947f0",
+    "Transaction": "156364a1215e80e380e6c328a7e5d2e4"
+}
+
+INCOME_CATEGORY_IDS = {
+    "Salary": "12e364a1215e81e9814ce231403b1207",
+    "Parents" : "12e364a1215e81ba8da4c0100297cdda",
+    "Savings" : "12e364a1215e8054860de5b2986f8e04",
+    "Repaid": "136364a1215e80fab733eb38739b9a1d",
+    "Others": "12e364a1215e81acbb77f4e668d148d2",
 }
 
 ACCOUNT_IDS = {
-    "PLN": "card-polish-id",
-    "USD": "card-international-id",
-    "EUR": "card-international-id",
-    "DEFAULT": "card-international-id"
+    "PLN": "24e364a1215e80faba4ec73df82d4aac",
+    "USD": "245364a1215e8082ba70c1831590fc89",
+    "EUR": "245364a1215e8082ba70c1831590fc89",
+    "SAVINGS": "24e364a1215e80778100e822ec199a0a",
+    "DEFAULT": "12e364a1215e808daed4e333e7f3efd1",
 }
-
 
 def post_transaction_to_notion(tx, account, is_income=False):
     db_id = DB_IDS["income"] if is_income else DB_IDS["expenses"]
@@ -53,11 +62,17 @@ def post_transaction_to_notion(tx, account, is_income=False):
     timestamp = tx["timestamp"]
 
     # Determine account relation
-    account_relation_id = ACCOUNT_IDS.get(currency, ACCOUNT_IDS["DEFAULT"])
+    if "mb:" in description.lower() or "vault" in description.lower() or "savings" in description.lower():
+        account_relation_id = ACCOUNT_IDS["SAVINGS"]
+    else:
+        account_relation_id = ACCOUNT_IDS.get(currency, ACCOUNT_IDS["DEFAULT"])
 
     # Determine category
-    category_name = categorize_transaction(description)
-    category_relation_id = CATEGORY_IDS.get(category_name)
+    category_name = categorize_transaction(description, is_income=is_income)
+    category_relation_id = (
+        INCOME_CATEGORY_IDS.get(category_name)
+        if is_income else CATEGORY_IDS.get(category_name)
+    )
 
     # Convert timestamp to ISO 8601 date (yyyy-mm-dd)
     date_obj = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
@@ -69,10 +84,10 @@ def post_transaction_to_notion(tx, account, is_income=False):
             "Name": {"title": [{"text": {"content": description}}]},
             "Amount": {"number": amount},
             "Account": {"relation": [{"id": account_relation_id}]},
-            "Category": {"relation": [{"id": category_relation_id}]} if not is_income else {},
+            "Category": {"relation": [{"id": category_relation_id}]} if category_relation_id else {},
             "Date": {"date": {"start": date_str}},
             "Month": {"select": {"name": date_obj.strftime("%B")}},
-            "Year": {"number": date_obj.year},
+            "Year": {"select": {"name": str(date_obj.year)}}
         }
     }
 
