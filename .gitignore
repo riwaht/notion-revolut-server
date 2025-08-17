@@ -1,5 +1,7 @@
 .env
 tokens.json
+logged_transactions.json
 riwriw
 riwriw.pub
 __pycache__/
+mock_test.py

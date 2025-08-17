@@ -7,11 +7,16 @@ import socketserver
 import webbrowser
 import requests
 from dotenv import load_dotenv
-from notion_utils import post_transaction_to_notion
+from src.notion.notion_utils import post_transaction_to_notion
 from datetime import datetime, timezone
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__))) 
+TOKENS_FILE = os.path.join(BASE_DIR, "data", "tokens.json")
+TX_CACHE_FILE = os.path.join(BASE_DIR, "data", "logged_transactions.json")
+# Cutoff timestamp for ignoring old transactions
+CUTOFF_TIMESTAMP = datetime(2025, 8, 17, 14, 0, 0, tzinfo=timezone.utc)
 REDIRECT_URI = os.getenv("TL_REDIRECT_URI")
 CLIENT_ID = os.getenv("TL_CLIENT_ID")
 CLIENT_SECRET = os.getenv("TL_CLIENT_SECRET")
@@ -19,6 +24,16 @@ AUTH_BASE = os.getenv("TL_AUTH_BASE", "https://auth.truelayer.com")
 API_BASE = os.getenv("TL_API_BASE", "https://api.truelayer.com")
 
 SCOPES = ["info", "accounts", "balance", "transactions", "offline_access"]
+
+def load_logged_transactions():
+    if os.path.exists(TX_CACHE_FILE):
+        with open(TX_CACHE_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
+
+def save_logged_transactions(tx_ids):
+    with open(TX_CACHE_FILE, "w") as f:
+        json.dump(list(tx_ids), f)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     code = None
@@ -62,9 +77,7 @@ def exchange_token(code):
     }
     r = requests.post(f"{AUTH_BASE}/connect/token", data=data)
     r.raise_for_status()
-    token_data = r.json()
-
-    with open("tokens.json", "w") as f:
+    with open(TOKENS_FILE, "w") as f:
         json.dump(token_data, f)
     return token_data["access_token"]
 
@@ -97,10 +110,8 @@ def is_exchange_transaction(tx):
 
 def main():
     token = None
-    CUTOFF_TIMESTAMP = datetime(2025, 8, 17, 14, 0, 0, tzinfo=timezone.utc)
-
-    if os.path.exists("tokens.json"):
-        with open("tokens.json") as f:
+    if os.path.exists(TOKENS_FILE):
+        with open(TOKENS_FILE) as f:
             token_data = json.load(f)
         refresh_token = token_data.get("refresh_token")
         try:
@@ -112,10 +123,13 @@ def main():
         code = get_auth_code()
         token = exchange_token(code)
 
-    print("✅ Authorized and got access token")
+    print("Authorized and got access token")
+
+    logged_tx_ids = load_logged_transactions()
+    new_logged_tx_ids = set()
 
     accounts = get_accounts(token)
-    print(f"✅ Found {len(accounts)} Revolut accounts")
+    print(f"Found {len(accounts)} Revolut accounts")
 
     for account in accounts:
         print(f"\n📒 {account['display_name']} ({account['account_type']}) — {account['currency']}")
@@ -123,21 +137,23 @@ def main():
         print(f"💳 {len(txns)} transactions:")
 
         for tx in txns[:10]:
+            tx_id = tx["transaction_id"]
+            if tx_id in logged_tx_ids:
+                print(f" Already logged {tx['description']} — skipping")
+                continue
+
             tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
             if tx_time <= CUTOFF_TIMESTAMP:
-                continue  # Skip this transaction
+                continue
 
-            print(f"- {tx['timestamp']} | {tx['description']} | {tx['amount']} {tx['currency']}")
+            print(f"→ Logging {tx['description']} | {tx['amount']} {tx['currency']}")
+            is_income = tx["amount"] >= 0 if not is_exchange_transaction(tx) else tx["amount"] > 0
+            post_transaction_to_notion(tx, account, is_income=is_income)
+            new_logged_tx_ids.add(tx_id)
 
-            if is_exchange_transaction(tx):
-                if tx['amount'] > 0:
-                    post_transaction_to_notion(tx, account, is_income=True)
-                else:
-                    post_transaction_to_notion(tx, account, is_income=False)
-            elif tx['amount'] < 0:
-                post_transaction_to_notion(tx, account, is_income=False)
-            else:
-                post_transaction_to_notion(tx, account, is_income=True)
+    # Save updated list
+    all_logged_tx_ids = logged_tx_ids.union(new_logged_tx_ids)
+    save_logged_transactions(all_logged_tx_ids)
 
 if __name__ == "__main__":
     main()

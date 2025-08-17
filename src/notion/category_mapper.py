@@ -1,5 +1,6 @@
 # category_mapper.py
 
+# TODO: Implement better categorization
 # Expense category keywords
 CATEGORY_KEYWORDS = {
     "Food": [
@@ -57,6 +58,9 @@ def categorize_transaction(description: str, is_income: bool = False) -> str:
         return DEFAULT_CATEGORY
 
     description = description.lower()
+    
+    if any(keyword in description for keyword in ["vault", "transfer to savings", "to usd", "to eur", "stash", "mb:"]):
+        return "Savings"
 
     category_map = INCOME_CATEGORY_KEYWORDS if is_income else CATEGORY_KEYWORDS
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from notion_revolut_connector import main as revolut_sync
+from src.revolut.notion_revolut_connector import main as revolut_sync
 import uvicorn
 import os
 
