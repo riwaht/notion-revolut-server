@@ -89,7 +89,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
     date_str = date_obj.date().isoformat()
 
     # Convert to USD
-    converted_amount = converter.convert_to_usd(raw_amount, currency, date_str)
+    converted_amount = converter.convert_to_usd(raw_amount, currency)
 
     # Build Notion properties
     properties = {
