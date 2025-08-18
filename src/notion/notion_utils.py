@@ -98,6 +98,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
         "Account": {"relation": [{"id": account_relation_id}]},
         "Category": {"relation": [{"id": category_relation_id}]} if category_relation_id else {},
         "Date": {"date": {"start": date_str}},
+        "To be Repaid?": {"select": {"name": "Not to be Repaid"}}
     }
 
     if not is_income:

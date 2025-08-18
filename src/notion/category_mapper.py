@@ -1,72 +1,61 @@
-# category_mapper.py
-
-# TODO: Implement better categorization
-# Expense category keywords
-CATEGORY_KEYWORDS = {
-    "Food": [
-        "restaurant", "coffee", "kebab", "burger", "pizza", "bar", "food", "café", "cafe", "lunch", "dinner", "eatery"
-    ],
-    "Transport": [
-        "uber", "taxi", "bolt", "bus", "train", "metro", "tram", "grab", "ride", "transport", "public transit"
-    ],
-    "Beauty": [
-        "salon", "nail", "hair", "spa", "lashes", "wax", "beauty"
-    ],
-    "Gifts": [
-        "gift", "souvenir", "present", "birthday", "anniversary"
-    ],
-    "Health": [
-        "pharmacy", "med", "hospital", "clinic", "pill", "health"
-    ],
-    "Subscription": [
-        "netflix", "spotify", "youtube", "prime", "subscription", "sub"
-    ],
-    "Gym": [
-        "gym", "fitness", "membership", "workout", "training"
-    ],
-    "Savings": [
-        "vault", "transfer to savings", "stash", "save"
-    ],
-    "Travel": [
-        "airbnb", "hotel", "booking.com", "ryanair", "wizz", "flights", "flight", "trip", "travel", "trainline"
-    ],
-    "Free Time": [
-        "museum", "park", "zoo", "game", "event", "festival", "ticket", "concert"
-    ],
-    "Necessities": [
-        "grocery", "market", "aldi", "lidl", "biedronka", "carrefour", "monoprix", "essentials", "coop", "kaufland"
-    ],
-    "Others": []
-}
-
-# Income category keywords
-INCOME_CATEGORY_KEYWORDS = {
-    "Salary": ["salary", "paycheck", "wage", "employer"],
-    "Parents": ["dad", "mom", "mother", "father", "parent", "family"],
-    "Savings": ["revolut vault", "vault income", "interest"],
-    "Repaid": ["repaid", "returned", "refund", "reimbursement", "payback"],
-    "Others": []
-}
+import os
+import json
+from sentence_transformers import SentenceTransformer, util
 
 DEFAULT_CATEGORY = "Others"
+MODEL_NAME = "paraphrase-MiniLM-L6-v2"
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+CATEGORIES_PATH = os.path.join(BASE_DIR, "data", "categories.json")
 
-def categorize_transaction(description: str, is_income: bool = False) -> str:
-    """
-    Map a transaction description to a category based on keywords.
-    """
+# Load categories from JSON
+with open(CATEGORIES_PATH, "r") as f:
+    all_categories = json.load(f)
+
+EXPENSE_KEYWORDS = all_categories.get("expenses", {})
+INCOME_KEYWORDS = all_categories.get("income", {})
+
+# Load sentence transformer model once
+_model = SentenceTransformer(MODEL_NAME)
+
+# Precompute embeddings
+def _compute_category_embeddings(keywords_map):
+    return {
+        category: _model.encode(" ".join(keywords))
+        for category, keywords in keywords_map.items()
+    }
+
+EXPENSE_EMBEDDINGS = _compute_category_embeddings(EXPENSE_KEYWORDS)
+INCOME_EMBEDDINGS = _compute_category_embeddings(INCOME_KEYWORDS)
+
+def _categorize_semantically(description: str, is_income: bool) -> str:
     if not description:
         return DEFAULT_CATEGORY
 
-    description = description.lower()
-    
+    desc_vec = _model.encode(description)
+    embeddings = INCOME_EMBEDDINGS if is_income else EXPENSE_EMBEDDINGS
+
+    best_category, best_score = None, 0.0
+    for category, cat_vec in embeddings.items():
+        score = float(util.cos_sim(desc_vec, cat_vec))
+        if score > best_score:
+            best_category, best_score = category, score
+
+    return best_category if best_score > 0.3 else DEFAULT_CATEGORY
+
+def categorize_transaction(description: str, is_income: bool = False) -> str:
+    if not description:
+        return DEFAULT_CATEGORY
+
+    description = description.lower().strip()
+
+    # Hardcoded Savings override
     if any(keyword in description for keyword in ["vault", "transfer to savings", "to usd", "to eur", "stash", "mb:"]):
         return "Savings"
 
-    category_map = INCOME_CATEGORY_KEYWORDS if is_income else CATEGORY_KEYWORDS
-
-    for category, keywords in category_map.items():
+    keyword_map = INCOME_KEYWORDS if is_income else EXPENSE_KEYWORDS
+    for category, keywords in keyword_map.items():
         for keyword in keywords:
             if keyword in description:
                 return category
 
-    return DEFAULT_CATEGORY
+    return _categorize_semantically(description, is_income)

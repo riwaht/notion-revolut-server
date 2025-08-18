@@ -1,0 +1,189 @@
+{
+  "expenses": {
+    "Food": [
+      "restaurant",
+      "coffee",
+      "kebab",
+      "burger",
+      "pizza",
+      "bar",
+      "food",
+      "cafe",
+      "lunch",
+      "dinner",
+      "eatery",
+      "milkbar",
+      "pierogi",
+      "manoushe",
+      "crepaway",
+      "meal",
+      "snack"
+    ],
+    "Transport": [
+      "uber",
+      "taxi",
+      "bolt",
+      "bus",
+      "train",
+      "metro",
+      "tram",
+      "ride",
+      "transport",
+      "public transit",
+      "fuel"
+    ],
+    "Beauty": [
+      "salon",
+      "nail",
+      "hair",
+      "spa",
+      "lashes",
+      "wax",
+      "beauty",
+      "makeup",
+      "massage"
+    ],
+    "Gifts": [
+      "gift",
+      "souvenir",
+      "present",
+      "birthday",
+      "anniversary",
+      "tumbler",
+      "figurine",
+      "rose"
+    ],
+    "Health": [
+      "pharmacy",
+      "med",
+      "hospital",
+      "clinic",
+      "pill",
+      "health",
+      "apteka",
+      "dentist"
+    ],
+    "Subscription": [
+      "netflix",
+      "spotify",
+      "youtube",
+      "prime",
+      "subscription",
+      "sub",
+      "apple",
+      "icloud",
+      "openai"
+    ],
+    "Gym": [
+      "gym",
+      "fitness",
+      "membership",
+      "workout",
+      "training",
+      "calypso",
+      "xpress",
+      "fit"
+    ],
+    "Savings": [
+      "vault",
+      "transfer to savings",
+      "stash",
+      "save",
+      "skarb"
+    ],
+    "Travel": [
+      "airbnb",
+      "hotel",
+      "booking.com",
+      "ryanair",
+      "wizz",
+      "flights",
+      "flight",
+      "trip",
+      "travel",
+      "trainline",
+      "flixbus",
+      "rental"
+    ],
+    "Free Time": [
+      "museum",
+      "park",
+      "zoo",
+      "game",
+      "event",
+      "festival",
+      "ticket",
+      "concert",
+      "escape room",
+      "cinema",
+      "movie"
+    ],
+    "Necessities": [
+      "grocery",
+      "market",
+      "aldi",
+      "lidl",
+      "biedronka",
+      "carrefour",
+      "essentials",
+      "coop",
+      "kaufland",
+      "rossmann",
+      "dealz",
+      "supermarket",
+      "zabka"
+    ],
+    "Laundry": [
+      "laundry",
+      "wash",
+      "dry clean",
+      "pralnia"
+    ],
+    "Others": []
+  },
+  "income": {
+    "Salary": [
+      "salary",
+      "paycheck",
+      "wage",
+      "employer",
+      "snowflake",
+      "payment from",
+      "payroll",
+      "stipend",
+      "bonus"
+    ],
+    "Parents": [
+      "dad",
+      "mom",
+      "mother",
+      "father",
+      "parent",
+      "family",
+      "from baba",
+      "from mama",
+      "from home"
+    ],
+    "Savings": [
+      "vault",
+      "revolut vault",
+      "interest",
+      "savings",
+      "return from savings",
+      "investment return"
+    ],
+    "Repaid": [
+      "repaid",
+      "returned",
+      "refund",
+      "reimbursement",
+      "payback",
+      "splitwise",
+      "twisto",
+      "shared",
+      "back",
+      "top up"
+    ],
+    "Others": []
+  }
+}
