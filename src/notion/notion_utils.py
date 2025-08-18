@@ -6,29 +6,8 @@ import requests
 from datetime import datetime
 from src.notion.category_mapper import categorize_transaction
 from dotenv import load_dotenv
-from forex_python.converter import CurrencyRates
-from forex_python.converter import RatesNotAvailableError
+from src.utils.exchange_utils import converter
 from collections import defaultdict
-
-# Set up global variables
-CACHE_FILE = "exchange_rates_cache.json"
-rates_cache = defaultdict(dict)
-c = CurrencyRates()
-
-# Load cache from file
-if os.path.exists(CACHE_FILE):
-    with open(CACHE_FILE, "r") as f:
-        raw = json.load(f)
-        for date_str, currencies in raw.items():
-            rates_cache[date_str] = currencies
-else:
-    rates_cache = defaultdict(dict)
-
-# Save cache to file
-def save_rates_cache():
-    with open(CACHE_FILE, "w") as f:
-        json.dump(rates_cache, f, indent=2)
-
 load_dotenv()
 
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
@@ -76,30 +55,6 @@ ACCOUNT_IDS = {
     "DEFAULT": "12e364a1215e808daed4e333e7f3efd1",
 }
 
-c = CurrencyRates()
-
-# TODO: Handle failed conversions
-def convert_to_usd(amount: float, currency: str, date_str: str) -> float:
-    """
-    Convert a given amount to USD using historical exchange rates.
-    :param amount: Amount in source currency
-    :param currency: Source currency (e.g., "EUR", "PLN")
-    :param date_str: Date in 'YYYY-MM-DD' format
-    :return: Amount in USD (rounded to 2 decimals)
-    """
-    # Use cached rate if available
-    if currency in rates_cache.get(date_str, {}):
-        rate = float(rates_cache[date_str][currency])
-    else:
-        try:
-            rate = c.get_rate(currency, "USD", datetime.strptime(date_str, "%Y-%m-%d").date())
-            rates_cache[date_str][currency] = rate
-            save_rates_cache()
-        except RatesNotAvailableError:
-            print(f"⚠️ Rate not available for {currency} on {date_str}, defaulting to original amount")
-            return round(amount, 2)
-
-    return round(amount * rate, 2)
 
 def post_transaction_to_notion(tx, account, is_income=None):
     raw_amount = abs(tx["amount"])
@@ -134,7 +89,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
     date_str = date_obj.date().isoformat()
 
     # Convert to USD
-    converted_amount = convert_to_usd(raw_amount, currency, date_str)
+    converted_amount = converter.convert_to_usd(raw_amount, currency, date_str)
 
     # Build Notion properties
     properties = {
