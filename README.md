@@ -1,124 +1,102 @@
 # Revolut → Notion Sync
 
-This project syncs your **Revolut transactions** to Notion automatically using the Revolut API and Notion API.
+**Automatically sync your Revolut transactions to Notion with smart categorization and currency conversion!**
+
+This tool connects your Revolut account to Notion, automatically categorizing transactions, converting currencies, and organizing your financial data beautifully.
 
 ---
 
 ## What It Does
 
-- Secure OAuth2-based Revolut authentication
-- Automatically fetches transactions across all Revolut accounts
-- Categorizes transactions intelligently:
-  - Expenses
-  - Income
-  - Internal Transfers (e.g. USD → PLN)
-- Converts all amounts to **USD**, using `forex-python`
-- Stores data in Notion databases:
-  - Expenses
-  - Income
-- Caches exchange rates in local JSON with 24-hour expiry
+- **Smart Categorization**: Automatically classifies expenses, income, and transfers
+- **Multi-Currency Support**: Converts all transactions to USD with real-time exchange rates
+- **Cross-Account Sync**: Fetches transactions from ALL your Revolut accounts
+- **Dual Database Support**: Separate tracking for expenses and income in Notion
+- **OAuth2 Security**: Secure authentication with automatic token refresh
+- **Offline Fallback**: Works even when exchange rate APIs are down
 
 ---
 
-## Features
+## Your Notion, Your Way
 
-### 1. Authentication
-- Loads `refresh_token` from `tokens.json`
-- Automatically refreshes the access token as needed
-- Supports manual auth code if missing or expired
+**Important**: This tool is designed around my specific Notion setup (separate expenses and income databases), but it's easily adaptable to yours!
 
-### 2. Transaction Sync
-- Transactions fetched from **all accounts**
-- Skips anything before a defined cutoff date
-- Classifies based on:
-  - **Direction** (in/out)
-  - **Description keywords**
-  - **Known salary sources or merchant types**
-- Internal currency exchanges are **logged twice**: once as expense, once as income
+You can:
+- **Use a Single Database**: Combine expenses and income into one database with a "Type" field
+- **Different Field Names**: Modify the field mappings to match your database properties
+- **Custom Categories**: Add more categorization logic for your specific needs
 
-### 3. Currency Conversion
-- All values are converted to **USD** before sending to Notion
-- Uses [`forex-python`](https://github.com/MicroPyramid/forex-python) under the hood
-- Exchange rates cached in `data/exchange_rates_cache.json`
-  - Key: `"PLN_USD"`, `"EUR_USD"` etc.
-  - Valid for 24 hours
-- Fallback rates used if:
-  - API is unavailable
-  - No internet
-  - Pair is not supported
-- Default fallback values:
-
-```python
-FALLBACK_RATES = {
-    "PLN": 0.25,
-    "EUR": 1.1,
-    "USD": 1.0,
-    "GBP": 1.27,
-    "CHF": 1.14,
-    "AED": 0.27,
-    "CAD": 0.74,
-    "TRY": 0.03,
-}
-```
-
-### 4. Notion Logging
-- Sends transactions to **Expenses** or **Income** database
-- Automatically fills:
-  - Amount (in USD)
-  - Currency
-  - Date (with Month & Year)
-  - Revolut Account
-  - Category
+The code is modular and well-documented, making it easy to customize.
 
 ---
 
-## Setup
+## Quick Setup
 
-### 1. Clone & Install
-
+### 1. **Get Started**
 ```bash
-git clone https://github.com/yourusername/notion-revolut-server.git
+git clone https://github.com/riwaht/notion-revolut-server.git
 cd notion-revolut-server
 python -m venv venv
-source venv/bin/activate
+# Windows: venv\Scripts\activate
+# Mac/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Environment Variables
-
-Create a `.env` file in the root with:
-
-```
-NOTION_TOKEN=your_notion_secret
+### 2. **Configure Environment**
+Create a `.env` file:
+```env
+NOTION_TOKEN=your_notion_integration_token
 EXPENSES_DB_ID=your_expenses_database_id
 INCOME_DB_ID=your_income_database_id
-
-# Other variables for TrueLayer and such used in the code...
+CUTOFF_DATE=2024-01-01  # Optional: only sync transactions after this date
 ```
 
-### 3. Add Revolut Tokens
+### 3. **Set Up Notion**
+1. Create integration at [notion.so/my-integrations](https://notion.so/my-integrations)
+2. Share your databases with the integration
+3. Copy database IDs from the URLs
 
-`tokens.json` should be created automatically with the following format (after authorizing):
-
-```json
-{
-  "refresh_token": "revolut_refresh_token",
-  "access_token": "revolut_access_token"
-}
+### 4. **Authenticate & Run**
+```bash
+python app.py
 ```
+
+Follow the prompts to complete OAuth2 authentication. Your tokens will be saved automatically.
 
 ---
 
-## File Structure
+## Usage
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Entry point for sync |
-| `src/notion/notion_utils.py` | Handles Notion API posting |
-| `src/notion/category_mapper.py` | Maps transactions to categories |
-| `src/utils/exchange_utils.py` | Currency conversion + rate caching |
-| `data/exchange_rates_cache.json` | Stores forex rates locally |
-| `data/tokens.json` | Stores Revolut tokens |
+### **Manual Sync**
+```bash
+python app.py
+```
+
+### **API Endpoints**
+- **GET `/`**: Check server status
+- **POST `/sync`**: Trigger manual sync
+
+### **Automated Scheduling**
+I run this daily at 9 AM using Make. You can use:
+- Cron jobs (Linux/Mac)
+- Task Scheduler (Windows)
+- Cloud platforms (Make, Zapier, n8n)
+- GitHub Actions
+
+---
+
+## Project Structure
+
+```
+revolut_server/
+├── app.py                          # FastAPI server
+├── src/
+│   ├── revolut/notion_revolut_connector.py  # Main sync logic
+│   ├── notion/                     # Notion API operations
+│   └── utils/exchange_utils.py     # Currency conversion
+├── data/                           # Cached data
+└── tests/                          # Unit tests
+```
 
 ---
 
@@ -128,15 +106,80 @@ INCOME_DB_ID=your_income_database_id
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-Tests cover:
-- Currency conversion with and without fallback
-- Rate caching
-- Notion payload formatting
+---
+
+## Code Overview
+
+### **Main Components**
+
+**`app.py`** - FastAPI server that provides REST endpoints for triggering syncs
+
+**`src/revolut/notion_revolut_connector.py`** - Core sync logic that:
+- Authenticates with Revolut using OAuth2
+- Fetches transactions from all accounts
+- Categorizes transactions (expenses vs income)
+- Converts currencies to USD
+- Sends data to Notion databases
+
+**`src/notion/notion_utils.py`** - Handles all Notion API operations:
+- Creates new database entries
+- Maps transaction data to Notion properties
+- Handles different database structures
+
+**`src/notion/category_mapper.py`** - Intelligent transaction categorization:
+- Analyzes transaction descriptions and amounts
+- Maps to predefined categories (food, transport, etc.)
+- Handles salary detection and internal transfers
+
+**`src/utils/exchange_utils.py`** - Currency conversion with caching:
+- Fetches real-time exchange rates
+- Caches rates for 24 hours to reduce API calls
+- Provides fallback rates for offline operation
+
+### **Data Flow**
+1. **Authentication** → Revolut OAuth2 flow
+2. **Transaction Fetch** → Get all transactions from Revolut API
+3. **Categorization** → Analyze and classify each transaction
+4. **Currency Conversion** → Convert to USD using cached rates
+5. **Notion Sync** → Create database entries with mapped properties
+
+### **Key Features**
+- **Modular Design**: Each component handles a specific responsibility
+- **Error Handling**: Graceful failure recovery at each step
+- **Caching**: Exchange rates and tokens are cached locally
+- **Configurable**: Easy to adapt for different Notion structures
 
 ---
 
-## To Do
+## Customization
 
-- Improve category logic using ML or NLP
-- Add retries + exponential backoff for failed Notion writes
-- Webhook support for auto-triggered syncs (Right now, I am personally running it automatically everyday at 9 AM using Make.)
+The modular design makes it easy to:
+- **Adapt to your Notion structure** (single database, different fields)
+- **Add new features** (webhooks, analytics, notifications)
+- **Extend categorization** logic for your needs
+
+---
+
+## Contributing
+
+Found a bug? Want to add a feature? Contributions are welcome!
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+---
+
+## Contact
+
+Have questions or need help setting this up? Feel free to reach out!
+
+- **GitHub Issues**: [Create an issue](https://github.com/riwaht/notion-revolut-server/issues) for bugs or feature requests
+- **Email**: [Your email here]
+- **LinkedIn**: [Your LinkedIn profile]
+
+---
+
+**Ready to transform your financial tracking? Let's sync!**
