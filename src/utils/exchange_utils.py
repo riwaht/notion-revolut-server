@@ -1,10 +1,14 @@
 import os
 import json
-from datetime import datetime
+from decimal import Decimal
 from forex_python.converter import CurrencyRates, RatesNotAvailableError
 from collections import defaultdict
 
-CACHE_FILE = "data/exchange_rates_cache.json"
+# Path to cache file
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+CACHE_FILE = os.path.join(BASE_DIR, "data", "exchange_rates_cache.json")
+
+# Default fallback rates if API fails
 FALLBACK_RATES = {
     "PLN": 0.25,
     "EUR": 1.1,
@@ -18,43 +22,55 @@ FALLBACK_RATES = {
 
 class ExchangeRateConverter:
     def __init__(self):
-        self.currency_rates = CurrencyRates()
-        self.cache = defaultdict(dict)
+        self.currency_rates = CurrencyRates(force_decimal=True)
+        self.cache = {}
         self._load_cache()
 
     def _load_cache(self):
         if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE, "r") as f:
-                raw = json.load(f)
-                for currency, rate in raw.items():
-                    self.cache[currency] = rate
+            try:
+                with open(CACHE_FILE, "r") as f:
+                    self.cache = json.load(f)
+            except Exception as e:
+                print(f"⚠️ Failed to load exchange rate cache: {e}")
+                self.cache = {}
 
     def _save_cache(self):
-        with open(CACHE_FILE, "w") as f:
-            json.dump(self.cache, f, indent=2)
+        try:
+            os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+            with open(CACHE_FILE, "w") as f:
+                json.dump(self.cache, f, indent=2)
+        except Exception as e:
+            print(f"⚠️ Failed to save exchange rate cache: {e}")
 
-    def get_rate_to_usd(self, currency: str) -> float:
-        if currency == "USD":
-            return 1.0
-
-        if currency in self.cache:
-            return float(self.cache[currency])
+    def get_rate(self, from_currency: str, to_currency: str = "USD") -> float:
+        key = f"{from_currency}_{to_currency}"
+        if key in self.cache:
+            return float(self.cache[key])
 
         try:
-            rate = self.currency_rates.get_rate(currency, "USD")
-            self.cache[currency] = rate
+            rate = self.currency_rates.get_rate(from_currency, to_currency)
+            self.cache[key] = float(rate)
             self._save_cache()
-            print(f"✅ Fetched {currency} → USD: {rate}")
-            return rate
+            print(f"✅ Fetched {from_currency} → {to_currency}: {rate}")
+            return float(rate)
         except RatesNotAvailableError:
-            fallback = FALLBACK_RATES.get(currency)
-            print(f"⚠️ Falling back to default rate for {currency}: {fallback}")
-            return fallback if fallback is not None else 1.0
+            fallback = FALLBACK_RATES.get(from_currency, 1.0)
+            print(f"⚠️ Falling back to default rate for {from_currency}: {fallback}")
+            return fallback
+
+    def convert(self, amount: float, from_currency: str, to_currency: str = "USD") -> float:
+        rate = self.get_rate(from_currency, to_currency)
+        return round(float(Decimal(amount) * Decimal(rate)), 2)
 
     def convert_to_usd(self, amount: float, currency: str) -> float:
-        rate = self.get_rate_to_usd(currency)
+        try:
+            rate = self.get_rate(currency, "USD")
+        except Exception as e:
+            print(f"⚠️ Error during conversion: {e}")
+            rate = FALLBACK_RATES.get(currency, 1.0)
         return round(amount * rate, 2)
 
 
-# Singleton for reuse
+# Singleton for importing and reuse
 converter = ExchangeRateConverter()
