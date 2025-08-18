@@ -108,35 +108,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ---
 
-## Code Overview
-
-### **Main Components**
-
-**`app.py`** - FastAPI server that provides REST endpoints for triggering syncs
-
-**`src/revolut/notion_revolut_connector.py`** - Core sync logic that:
-- Authenticates with Revolut using OAuth2
-- Fetches transactions from all accounts
-- Categorizes transactions (expenses vs income)
-- Converts currencies to USD
-- Sends data to Notion databases
-
-**`src/notion/notion_utils.py`** - Handles all Notion API operations:
-- Creates new database entries
-- Maps transaction data to Notion properties
-- Handles different database structures
-
-**`src/notion/category_mapper.py`** - Intelligent transaction categorization:
-- Analyzes transaction descriptions and amounts
-- Maps to predefined categories (food, transport, etc.)
-- Handles salary detection and internal transfers
-
-**`src/utils/exchange_utils.py`** - Currency conversion with caching:
-- Fetches real-time exchange rates
-- Caches rates for 24 hours to reduce API calls
-- Provides fallback rates for offline operation
-
-### **Data Flow**
+## **Data Flow**
 1. **Authentication** → Revolut OAuth2 flow
 2. **Transaction Fetch** → Get all transactions from Revolut API
 3. **Categorization** → Analyze and classify each transaction
@@ -177,9 +149,10 @@ Found a bug? Want to add a feature? Contributions are welcome!
 Have questions or need help setting this up? Feel free to reach out!
 
 - **GitHub Issues**: [Create an issue](https://github.com/riwaht/notion-revolut-server/issues) for bugs or feature requests
-- **Email**: [Your email here]
-- **LinkedIn**: [Your LinkedIn profile]
+- **Email**: Gmail[mailto:riwa.hoteit@gmail.com]
+- **LinkedIn**: LinkedIn(https://www.linkedin.com/in/riwa-hoteit-7236b6204/)
 
 ---
 
 **Ready to transform your financial tracking? Let's sync!**
+
