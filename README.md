@@ -149,10 +149,12 @@ Found a bug? Want to add a feature? Contributions are welcome!
 Have questions or need help setting this up? Feel free to reach out!
 
 - **GitHub Issues**: [Create an issue](https://github.com/riwaht/notion-revolut-server/issues) for bugs or feature requests
-- **Email**: Gmail[mailto:riwa.hoteit@gmail.com]
-- **LinkedIn**: LinkedIn(https://www.linkedin.com/in/riwa-hoteit-7236b6204/)
+- **Email**: [riwa.hoteit@gmail.com](mailto:riwa.hoteit@gmail.com)  
+- **LinkedIn**: [LinkedIn](https://www.linkedin.com/in/riwa-hoteit-7236b6204/)
+
 
 ---
 
 **Ready to transform your financial tracking? Let's sync!**
+
 
