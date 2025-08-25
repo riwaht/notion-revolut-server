@@ -41,7 +41,10 @@
       "wax",
       "beauty",
       "makeup",
-      "massage"
+      "massage",
+      "pull",
+      "bear",
+      "pullbear"
     ],
     "Gifts": [
       "gift",
@@ -139,6 +142,10 @@
       "dry clean",
       "pralnia"
     ],
+    "Transaction": [
+      "exchanged to",
+      "exchanged from"
+    ],
     "Others": []
   },
   "income": {
@@ -183,6 +190,10 @@
       "shared",
       "back",
       "top up"
+    ],
+    "Transaction": [
+      "exchanged to",
+      "exchanged from"
     ],
     "Others": []
   }

@@ -44,6 +44,7 @@ INCOME_CATEGORY_IDS = {
     "Parents" : "12e364a1215e81ba8da4c0100297cdda",
     "Savings" : "12e364a1215e8054860de5b2986f8e04",
     "Repaid": "136364a1215e80fab733eb38739b9a1d",
+    "Transaction": "25a364a1215e800fad15f09941aa5e19",
     "Others": "12e364a1215e81acbb77f4e668d148d2",
 }
 
@@ -118,10 +119,14 @@ def post_transaction_to_notion(tx, account, is_income=None):
         "properties": properties,
     }
 
+    # Enhanced logging with transaction ID and destination
+    tx_id = tx["transaction_id"][:12]  # Show first 12 chars of transaction ID
+    db_type = "Income" if is_income else "Expense"
+    
     response = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=payload)
 
     if response.status_code == 200:
-        print(f"Added {description} to Notion ({'Income' if is_income else 'Expense'})")
+        print(f"✅ [{tx_id}] Added '{description}' to {db_type} DB | ${converted_amount} USD | {category_name}")
     else:
-        print(f"Failed to add {description} — {response.status_code}")
+        print(f"❌ [{tx_id}] Failed to add '{description}' to {db_type} DB — {response.status_code}")
         print(response.text)

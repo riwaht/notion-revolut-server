@@ -147,17 +147,20 @@ def main():
         for tx in txns[:10]:
             tx_id = tx["transaction_id"]
             if tx_id in logged_tx_ids:
-                print(f" Already logged {tx['description']} — skipping")
+                tx_id_short = tx_id[:12]
+                print(f"⏭️  [{tx_id_short}] Already logged {tx['description']} — skipping")
                 continue
 
             tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
             if tx_time <= CUTOFF_TIMESTAMP:
                 continue
 
-            print(f"→ Logging {tx['description']} | {tx['amount']} {tx['currency']}")
+            tx_id_short = tx["transaction_id"][:12]
+            print(f"→ [{tx_id_short}] Logging {tx['description']} | {tx['amount']} {tx['currency']}")
             
             if is_exchange_transaction(tx):
                 # For exchanges, create both expense and income transactions
+                print(f"  🔄 Exchange detected - creating dual transactions")
                 if tx["amount"] > 0:
                     # This is the income side (money received)
                     post_transaction_to_notion(tx, account, is_income=True)
@@ -175,6 +178,8 @@ def main():
             else:
                 # Regular transaction
                 is_income = tx["amount"] >= 0
+                tx_type = "income" if is_income else "expense"
+                print(f"  📝 Regular {tx_type} transaction")
                 post_transaction_to_notion(tx, account, is_income=is_income)
             
             new_logged_tx_ids.add(tx_id)
