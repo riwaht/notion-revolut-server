@@ -160,7 +160,7 @@ def main():
             
             if is_exchange_transaction(tx):
                 # For exchanges, create both expense and income transactions
-                print(f"  🔄 Exchange detected - creating dual transactions")
+                print(f"  🔄 Exchange detected ({tx['currency']}) - creating dual transactions")
                 if tx["amount"] > 0:
                     # This is the income side (money received)
                     post_transaction_to_notion(tx, account, is_income=True)

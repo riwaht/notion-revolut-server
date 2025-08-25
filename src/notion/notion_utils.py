@@ -50,8 +50,8 @@ INCOME_CATEGORY_IDS = {
 
 ACCOUNT_IDS = {
     "PLN": "24e364a1215e80faba4ec73df82d4aac",
-    "USD": "245364a1215e8082ba70c1831590fc89",
-    "EUR": "245364a1215e8082ba70c1831590fc89",
+    "USD": "245364a1215e8082ba70c1831590fc89",  # Card International
+    "EUR": "245364a1215e8082ba70c1831590fc89",  # Card International (same as USD)
     "SAVINGS": "24e364a1215e80778100e822ec199a0a",
     "DEFAULT": "12e364a1215e808daed4e333e7f3efd1",
 }
@@ -76,15 +76,32 @@ def post_transaction_to_notion(tx, account, is_income=None):
     if "exchanged to" in description.lower() or "exchanged from" in description.lower():
         # For exchange transactions
         if is_income:
-            # Income from exchange goes to USD account (card international)
-            account_relation_id = ACCOUNT_IDS["USD"]
+            # Income: All non-PLN currencies go to Card International (USD/EUR account)
+            if currency == "PLN":
+                account_relation_id = ACCOUNT_IDS["PLN"]
+            else:
+                # EUR, USD, HUF, etc. all go to Card International
+                account_relation_id = ACCOUNT_IDS["USD"]  # Card International (same as EUR)
         else:
-            # Expense from exchange goes to savings account (card savings rev)  
-            account_relation_id = ACCOUNT_IDS["SAVINGS"]
+            # Expense: Based on source currency
+            if currency == "PLN":
+                account_relation_id = ACCOUNT_IDS["PLN"]
+            elif currency == "USD":
+                account_relation_id = ACCOUNT_IDS["SAVINGS"]
+            elif currency == "EUR":
+                account_relation_id = ACCOUNT_IDS["EUR"]  # Card International
+            else:
+                # Other currencies go to Card International
+                account_relation_id = ACCOUNT_IDS["USD"]  # Card International
     elif "mb:" in description.lower() or "vault" in description.lower() or "savings" in description.lower():
         account_relation_id = ACCOUNT_IDS["SAVINGS"]
     else:
-        account_relation_id = ACCOUNT_IDS.get(currency, ACCOUNT_IDS["DEFAULT"])
+        # Non-exchange transactions: explicit currency mapping
+        if currency == "PLN":
+            account_relation_id = ACCOUNT_IDS["PLN"]
+        else:
+            # EUR, USD, and all other currencies use Card International
+            account_relation_id = ACCOUNT_IDS["USD"]  # Card International (includes EUR, USD, travel currencies)
 
     # Determine category
     category_name = categorize_transaction(description, is_income=is_income)
@@ -123,10 +140,21 @@ def post_transaction_to_notion(tx, account, is_income=None):
     tx_id = tx["transaction_id"][:12]  # Show first 12 chars of transaction ID
     db_type = "Income" if is_income else "Expense"
     
+    # Get account name for logging
+    account_name = "Unknown"
+    if account_relation_id == ACCOUNT_IDS["USD"]:  # Same as EUR - Card International
+        account_name = "Card International"
+    elif account_relation_id == ACCOUNT_IDS["PLN"]:
+        account_name = "PLN"
+    elif account_relation_id == ACCOUNT_IDS["SAVINGS"]:
+        account_name = "Savings"
+    else:
+        account_name = "DEFAULT"
+    
     response = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=payload)
 
     if response.status_code == 200:
-        print(f"✅ [{tx_id}] Added '{description}' to {db_type} DB | ${converted_amount} USD | {category_name}")
+        print(f"✅ [{tx_id}] Added '{description}' to {db_type} DB | ${converted_amount} USD | {category_name} | {account_name} account")
     else:
         print(f"❌ [{tx_id}] Failed to add '{description}' to {db_type} DB — {response.status_code}")
         print(response.text)
