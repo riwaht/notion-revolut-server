@@ -2,8 +2,6 @@ import os
 import json
 import time
 import urllib.parse
-import http.server
-import socketserver
 import webbrowser
 import requests
 from dotenv import load_dotenv
@@ -35,18 +33,8 @@ def save_logged_transactions(tx_ids):
     with open(TX_CACHE_FILE, "w") as f:
         json.dump(list(tx_ids), f)
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    code = None
-    def do_GET(self):
-        if self.path.startswith("/callback"):
-            qs = urllib.parse.urlparse(self.path).query
-            Handler.code = urllib.parse.parse_qs(qs).get("code", [None])[0]
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"You can close this tab.")
-        else:
-            self.send_response(404)
-            self.end_headers()
+# Global variable to store auth code when running as standalone script
+auth_code_storage = {"code": None}
 
 def get_auth_code():
     params = {
@@ -61,11 +49,30 @@ def get_auth_code():
     }
     url = AUTH_BASE + "?" + urllib.parse.urlencode(params)
     print("🔗 Opening browser to authorize Revolut...")
-    with socketserver.TCPServer(("", 3000), Handler) as httpd:
-        webbrowser.open(url)
-        while Handler.code is None:
-            httpd.handle_request()
-    return Handler.code
+    print(f"Please visit this URL if the browser doesn't open automatically: {url}")
+    print("After authorization, the authorization code should be captured by your server.")
+    print("If running standalone, please copy the 'code' parameter from the callback URL manually.")
+    
+    # Try to import from app to use shared storage, fallback to local storage
+    try:
+        from app import auth_code_storage as shared_storage
+        storage = shared_storage
+    except ImportError:
+        storage = auth_code_storage
+    
+    webbrowser.open(url)
+    
+    # Wait for the code to be set by the callback
+    timeout = 300  # 5 minutes timeout
+    start_time = time.time()
+    while storage["code"] is None:
+        time.sleep(1)
+        if time.time() - start_time > timeout:
+            raise Exception("OAuth authorization timed out. Please try again.")
+    
+    code = storage["code"]
+    storage["code"] = None  # Clear the code after use
+    return code
 
 def exchange_token(code):
     data = {
@@ -77,6 +84,7 @@ def exchange_token(code):
     }
     r = requests.post(f"{AUTH_BASE}/connect/token", data=data)
     r.raise_for_status()
+    token_data = r.json()
     with open(TOKENS_FILE, "w") as f:
         json.dump(token_data, f)
     return token_data["access_token"]
@@ -91,7 +99,7 @@ def refresh_access_token(refresh_token):
     r = requests.post(f"{AUTH_BASE}/connect/token", data=data)
     r.raise_for_status()
     token_data = r.json()
-    with open("tokens.json", "w") as f:
+    with open(TOKENS_FILE, "w") as f:
         json.dump(token_data, f)
     return token_data["access_token"]
 
