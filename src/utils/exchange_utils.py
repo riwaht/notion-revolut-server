@@ -18,6 +18,7 @@ FALLBACK_RATES = {
     "AED": 0.27,
     "CAD": 0.74,
     "TRY": 0.03,
+    "HUF": 0.0027,  # Hungarian Forint (~370 HUF = 1 USD)
 }
 
 class ExchangeRateConverter:

@@ -72,7 +72,15 @@ def post_transaction_to_notion(tx, account, is_income=None):
     db_id = DB_IDS["income"] if is_income else DB_IDS["expenses"]
 
     # Determine account relation
-    if "mb:" in description.lower() or "vault" in description.lower() or "savings" in description.lower():
+    if "exchanged to" in description.lower() or "exchanged from" in description.lower():
+        # For exchange transactions
+        if is_income:
+            # Income from exchange goes to USD account (card international)
+            account_relation_id = ACCOUNT_IDS["USD"]
+        else:
+            # Expense from exchange goes to savings account (card savings rev)  
+            account_relation_id = ACCOUNT_IDS["SAVINGS"]
+    elif "mb:" in description.lower() or "vault" in description.lower() or "savings" in description.lower():
         account_relation_id = ACCOUNT_IDS["SAVINGS"]
     else:
         account_relation_id = ACCOUNT_IDS.get(currency, ACCOUNT_IDS["DEFAULT"])

@@ -155,8 +155,28 @@ def main():
                 continue
 
             print(f"→ Logging {tx['description']} | {tx['amount']} {tx['currency']}")
-            is_income = tx["amount"] >= 0 if not is_exchange_transaction(tx) else tx["amount"] > 0
-            post_transaction_to_notion(tx, account, is_income=is_income)
+            
+            if is_exchange_transaction(tx):
+                # For exchanges, create both expense and income transactions
+                if tx["amount"] > 0:
+                    # This is the income side (money received)
+                    post_transaction_to_notion(tx, account, is_income=True)
+                    # Create the corresponding expense with negative amount
+                    expense_tx = tx.copy()
+                    expense_tx["amount"] = -abs(tx["amount"])
+                    post_transaction_to_notion(expense_tx, account, is_income=False)
+                else:
+                    # This is the expense side (money sent)
+                    post_transaction_to_notion(tx, account, is_income=False)
+                    # Create the corresponding income with positive amount
+                    income_tx = tx.copy()
+                    income_tx["amount"] = abs(tx["amount"])
+                    post_transaction_to_notion(income_tx, account, is_income=True)
+            else:
+                # Regular transaction
+                is_income = tx["amount"] >= 0
+                post_transaction_to_notion(tx, account, is_income=is_income)
+            
             new_logged_tx_ids.add(tx_id)
 
     # Save updated list
