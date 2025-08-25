@@ -106,9 +106,7 @@ def refresh_access_token(refresh_token):
 def get_accounts(token):
     r = requests.get(API_BASE + "/data/v1/accounts", headers={"Authorization": f"Bearer {token}"})
     r.raise_for_status()
-    response_data = r.json()
-    print(f"🔍 Raw accounts API response: {json.dumps(response_data, indent=2)}")
-    return response_data["results"]
+    return r.json()["results"]
 
 def get_transactions(token, account_id):
     r = requests.get(API_BASE + f"/data/v1/accounts/{account_id}/transactions", headers={"Authorization": f"Bearer {token}"})
