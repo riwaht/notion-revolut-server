@@ -79,8 +79,10 @@ def post_transaction_to_notion(tx, account, is_income=None):
             # Income: All non-PLN currencies go to Card International (USD/EUR account)
             if currency == "PLN":
                 account_relation_id = ACCOUNT_IDS["PLN"]
+            elif currency == "USD":
+                account_relation_id = ACCOUNT_IDS["SAVINGS"]
             else:
-                # EUR, USD, HUF, etc. all go to Card International
+                # EUR, HUF, etc. all go to Card International
                 account_relation_id = ACCOUNT_IDS["USD"]  # Card International (same as EUR)
         else:
             # Expense: Based on source currency
@@ -103,12 +105,17 @@ def post_transaction_to_notion(tx, account, is_income=None):
             # EUR, USD, and all other currencies use Card International
             account_relation_id = ACCOUNT_IDS["USD"]  # Card International (includes EUR, USD, travel currencies)
 
-    # Determine category
-    category_name = categorize_transaction(description, is_income=is_income)
-    category_relation_id = (
-        INCOME_CATEGORY_IDS.get(category_name)
-        if is_income else CATEGORY_IDS.get(category_name)
-    )
+    # if currency is anything other than usd, pln or eur, set category to travel
+    if currency not in ["USD", "PLN", "EUR"]:
+        category_name = "Travel"
+        category_relation_id = CATEGORY_IDS.get(category_name)
+    else:
+        # Determine category
+        category_name = categorize_transaction(description, is_income=is_income)
+        category_relation_id = (
+            INCOME_CATEGORY_IDS.get(category_name)
+            if is_income else CATEGORY_IDS.get(category_name)
+        )
 
     # Convert timestamp to ISO 8601 date
     date_obj = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
