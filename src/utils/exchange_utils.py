@@ -1,7 +1,8 @@
 import os
 import json
+import requests
 from decimal import Decimal
-from forex_python.converter import CurrencyRates, RatesNotAvailableError
+from datetime import datetime
 from collections import defaultdict
 
 # Path to cache file
@@ -64,13 +65,38 @@ class ExchangeRateConverter:
         rate = self.get_rate(from_currency, to_currency)
         return round(float(Decimal(amount) * Decimal(rate)), 2)
 
-    def convert_to_usd(self, amount: float, currency: str) -> float:
+    def convert_to_usd(self, amount: Decimal, currency: str, date: str) -> Decimal:
+        """
+        Convert amount from given currency to USD using historical rate on given date (YYYY-MM-DD).
+        Falls back to same amount if API fails.
+        """
+        if currency == "USD":
+            return amount
+
         try:
-            rate = self.get_rate(currency, "USD")
+            today = datetime.utcnow().date()
+            requested_date = min(datetime.strptime(date, "%Y-%m-%d").date(), today)
+            url = f"https://api.frankfurter.app/{requested_date.isoformat()}"
+            resp = requests.get(url, params={"from": currency, "to": "USD"}, timeout=10)
+            data = resp.json()
+
+            if "rates" in data and "USD" in data["rates"]:
+                rate = Decimal(str(data["rates"]["USD"]))
+                converted = (amount * rate).quantize(Decimal("0.01"))
+                print(f"[INFO] Converted {amount} {currency} to {converted} USD @ {rate}")
+                return converted
+            else:
+                print(f"[ERROR] USD rate not in response: {data}")
         except Exception as e:
-            print(f"⚠️ Error during conversion: {e}")
-            rate = FALLBACK_RATES.get(currency, 1.0)
-        return round(amount * rate, 2)
+            print(f"[ERROR] Currency conversion failed: {e}")
+            # Keep fallback rates as an exception
+            if currency in FALLBACK_RATES:
+                fallback_rate = Decimal(str(FALLBACK_RATES[currency]))
+                converted = (amount * fallback_rate).quantize(Decimal("0.01"))
+                print(f"[FALLBACK] Using fallback rate for {currency}: {fallback_rate}")
+                return converted
+
+        return amount
 
 
 # Singleton for importing and reuse

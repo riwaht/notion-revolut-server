@@ -4,6 +4,7 @@ import json
 import os
 import requests
 from datetime import datetime
+from decimal import Decimal
 from src.notion.category_mapper import categorize_transaction
 from dotenv import load_dotenv
 from src.utils.exchange_utils import converter
@@ -122,7 +123,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
     date_str = date_obj.date().isoformat()
 
     # Convert to USD
-    converted_amount = converter.convert_to_usd(raw_amount, currency)
+    converted_amount = converter.convert_to_usd(Decimal(str(raw_amount)), currency, date_str)
 
     # Build Notion properties
     properties = {

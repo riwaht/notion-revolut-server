@@ -1,6 +1,5 @@
 fastapi
 uvicorn
 requests
-forex-python
 dotenv
 sentence-transformers
