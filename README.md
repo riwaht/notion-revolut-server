@@ -9,11 +9,11 @@ This tool connects your Revolut account to Notion, automatically categorizing tr
 ## What It Does
 
 - **Smart Categorization**: Automatically classifies expenses, income, and transfers
-- **Multi-Currency Support**: Converts all transactions to USD with real-time exchange rates
+- **Multi-Currency Support**: Converts all transactions to USD with historical exchange rates via Frankfurter API
 - **Cross-Account Sync**: Fetches transactions from ALL your Revolut accounts
 - **Dual Database Support**: Separate tracking for expenses and income in Notion
 - **OAuth2 Security**: Secure authentication with automatic token refresh
-- **Offline Fallback**: Works even when exchange rate APIs are down
+- **Smart Fallback**: Falls back to predefined rates when exchange rate API is unavailable
 
 ---
 
@@ -108,17 +108,32 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ---
 
+## **Currency Conversion System**
+
+The app uses the **Frankfurter API** for accurate historical exchange rate conversion:
+
+- **Historical Accuracy**: Fetches actual exchange rates for the transaction date
+- **Decimal Precision**: Uses Python's Decimal type for financial accuracy
+- **Smart Fallback**: Falls back to predefined rates if API is unavailable
+- **Supported Currencies**: PLN, EUR, USD, GBP, CHF, AED, CAD, TRY, HUF, and more
+- **Date Validation**: Ensures no future dates are used for historical rates
+
+**Example**: A €50.00 transaction from March 15, 2024 will use the actual EUR→USD rate from that specific date, ensuring your financial records reflect real historical values.
+
+---
+
 ## **Data Flow**
 1. **Authentication** → Revolut OAuth2 flow
 2. **Transaction Fetch** → Get all transactions from Revolut API
 3. **Categorization** → Analyze and classify each transaction
-4. **Currency Conversion** → Convert to USD using cached rates
+4. **Currency Conversion** → Convert to USD using historical rates from Frankfurter API
 5. **Notion Sync** → Create database entries with mapped properties
 
 ### **Key Features**
 - **Modular Design**: Each component handles a specific responsibility
 - **Error Handling**: Graceful failure recovery at each step
-- **Caching**: Exchange rates and tokens are cached locally
+- **Precision**: Uses historical exchange rates and Decimal precision for accurate conversions
+- **API Integration**: Modern REST API approach with Frankfurter for exchange rates
 - **Configurable**: Easy to adapt for different Notion structures
 
 ---
