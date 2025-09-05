@@ -17,10 +17,10 @@ INCOME_KEYWORDS = all_categories.get("income", {})
 # Load sentence transformer model once
 _model = SentenceTransformer(MODEL_NAME)
 
-# Precompute embeddings
+# Precompute embeddings for individual keywords
 def _compute_category_embeddings(keywords_map):
     return {
-        category: _model.encode(" ".join(keywords))
+        category: [_model.encode(keyword) for keyword in keywords]
         for category, keywords in keywords_map.items()
     }
 
@@ -35,12 +35,14 @@ def _categorize_semantically(description: str, is_income: bool) -> str:
     embeddings = INCOME_EMBEDDINGS if is_income else EXPENSE_EMBEDDINGS
 
     best_category, best_score = None, 0.0
-    for category, cat_vec in embeddings.items():
-        score = float(util.cos_sim(desc_vec, cat_vec))
-        if score > best_score:
-            best_category, best_score = category, score
+    for category, keyword_vecs in embeddings.items():
+        # Find the best match among all keywords in this category
+        for keyword_vec in keyword_vecs:
+            score = float(util.cos_sim(desc_vec, keyword_vec))
+            if score > best_score:
+                best_category, best_score = category, score
 
-    return best_category if best_score > 0.3 else DEFAULT_CATEGORY
+    return best_category if best_score > 0.2 else DEFAULT_CATEGORY
 
 def categorize_transaction(description: str, is_income: bool = False) -> str:
     if not description:
