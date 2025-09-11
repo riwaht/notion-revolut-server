@@ -51,14 +51,57 @@ INCOME_CATEGORY_IDS = {
 
 ACCOUNT_IDS = {
     "PLN": "24e364a1215e80faba4ec73df82d4aac",
-    "USD": "245364a1215e8082ba70c1831590fc89",  # Card International
-    "EUR": "245364a1215e8082ba70c1831590fc89",  # Card International (same as USD)
+    "INTERNATIONAL": "245364a1215e8082ba70c1831590fc89",  # Card International (USD/EUR/other currencies)
     "SAVINGS": "24e364a1215e80778100e822ec199a0a",
     "DEFAULT": "12e364a1215e808daed4e333e7f3efd1",
 }
 
+# Automatic savings transfer amount (PLN)
+AUTO_SAVINGS_AMOUNT = 2000
 
-def post_transaction_to_notion(tx, account, is_income=None):
+
+def is_salary_transaction(description: str) -> bool:
+    """Check if transaction is a salary payment"""
+    salary_keywords = ["salary", "paycheck", "wage", "employer", "snowflake", "payment from", "payroll", "stipend", "bonus"]
+    return any(keyword in description.lower() for keyword in salary_keywords)
+
+
+def create_automatic_savings_transfer(original_tx, account):
+    """Create automatic transfer from PLN to Savings when salary is received"""
+    if original_tx["currency"] != "PLN":
+        return  # Only transfer from PLN transactions
+    
+    date_obj = datetime.fromisoformat(original_tx["timestamp"].replace("Z", "+00:00"))
+    date_str = date_obj.date().isoformat()
+    
+    print(f"💰 Creating automatic savings transfer of {AUTO_SAVINGS_AMOUNT} PLN")
+    
+    # Create expense transaction (money leaving PLN account)
+    expense_tx = {
+        "amount": -AUTO_SAVINGS_AMOUNT,
+        "currency": "PLN",
+        "description": f"Auto transfer to savings - {AUTO_SAVINGS_AMOUNT} PLN",
+        "timestamp": original_tx["timestamp"],
+        "transaction_id": f"auto_savings_expense_{original_tx['transaction_id']}"
+    }
+    
+    # Create income transaction (money entering Savings account)  
+    income_tx = {
+        "amount": AUTO_SAVINGS_AMOUNT,
+        "currency": "PLN",
+        "description": f"Auto transfer from PLN - {AUTO_SAVINGS_AMOUNT} PLN",
+        "timestamp": original_tx["timestamp"],
+        "transaction_id": f"auto_savings_income_{original_tx['transaction_id']}"
+    }
+    
+    # Post the expense (PLN account loses money)
+    post_transaction_to_notion_internal(expense_tx, account, is_income=False, force_account="PLN")
+    
+    # Post the income (Savings account gains money)
+    post_transaction_to_notion_internal(income_tx, account, is_income=True, force_account="SAVINGS")
+
+
+def post_transaction_to_notion_internal(tx, account, is_income=None, force_account=None):
     raw_amount = abs(tx["amount"])
     currency = tx["currency"]
     description = tx["description"]
@@ -74,44 +117,23 @@ def post_transaction_to_notion(tx, account, is_income=None):
     db_id = DB_IDS["income"] if is_income else DB_IDS["expenses"]
 
     # Determine account relation
-    if "exchanged to" in description.lower() or "exchanged from" in description.lower():
-        # For exchange transactions
-        if is_income:
-            # Income: All non-PLN currencies go to Card International (USD/EUR account)
-            if currency == "PLN":
-                account_relation_id = ACCOUNT_IDS["PLN"]
-            elif currency == "USD":
-                account_relation_id = ACCOUNT_IDS["SAVINGS"]
-            else:
-                # EUR, HUF, etc. all go to Card International
-                account_relation_id = ACCOUNT_IDS["USD"]  # Card International (same as EUR)
-        else:
-            # Expense: Based on source currency
-            if currency == "PLN":
-                account_relation_id = ACCOUNT_IDS["PLN"]
-            elif currency == "USD":
-                account_relation_id = ACCOUNT_IDS["SAVINGS"]
-            elif currency == "EUR":
-                account_relation_id = ACCOUNT_IDS["EUR"]  # Card International
-            else:
-                # Other currencies go to Card International
-                account_relation_id = ACCOUNT_IDS["USD"]  # Card International
-    elif "mb:" in description.lower() or "vault" in description.lower() or "savings" in description.lower():
+    if force_account:
+        account_relation_id = ACCOUNT_IDS[force_account]
+    elif "vault" in description.lower():
         account_relation_id = ACCOUNT_IDS["SAVINGS"]
+    elif currency == "PLN":
+        account_relation_id = ACCOUNT_IDS["PLN"]
     else:
-        # Non-exchange transactions: explicit currency mapping
-        if currency == "PLN":
-            account_relation_id = ACCOUNT_IDS["PLN"]
-        else:
-            # EUR, USD, and all other currencies use Card International
-            account_relation_id = ACCOUNT_IDS["USD"]  # Card International (includes EUR, USD, travel currencies)
+        # All non-PLN currencies (EUR, USD, HUF, etc.) go to Card International
+        account_relation_id = ACCOUNT_IDS["INTERNATIONAL"]
 
-    # if currency is anything other than usd, pln or eur, set category to travel
-    if currency not in ["USD", "PLN", "EUR"]:
+    # Special cases and category determination
+    if currency not in ["USD", "PLN"]:
+        # Non-major currencies (HUF, GBP, etc.) default to travel
         category_name = "Travel"
         category_relation_id = CATEGORY_IDS.get(category_name)
     else:
-        # Determine category
+        # Normal category determination for PLN, USD, EUR
         category_name = categorize_transaction(description, is_income=is_income)
         category_relation_id = (
             INCOME_CATEGORY_IDS.get(category_name)
@@ -122,7 +144,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
     date_obj = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     date_str = date_obj.date().isoformat()
 
-    # Convert to USD
+    # Convert to USD for consistent tracking
     converted_amount = converter.convert_to_usd(Decimal(str(raw_amount)), currency, date_str)
 
     # Build Notion properties
@@ -150,7 +172,7 @@ def post_transaction_to_notion(tx, account, is_income=None):
     
     # Get account name for logging
     account_name = "Unknown"
-    if account_relation_id == ACCOUNT_IDS["USD"]:  # Same as EUR - Card International
+    if account_relation_id == ACCOUNT_IDS["INTERNATIONAL"]:
         account_name = "Card International"
     elif account_relation_id == ACCOUNT_IDS["PLN"]:
         account_name = "PLN"
@@ -166,3 +188,19 @@ def post_transaction_to_notion(tx, account, is_income=None):
     else:
         print(f"❌ [{tx_id}] Failed to add '{description}' to {db_type} DB — {response.status_code}")
         print(response.text)
+
+
+def post_transaction_to_notion(tx, account, is_income=None):
+    """
+    Main function to post transactions to Notion.
+    Handles automatic savings transfer when salary is received.
+    """
+    # First post the original transaction
+    post_transaction_to_notion_internal(tx, account, is_income)
+    
+    # Check if this is a salary transaction and create automatic transfer
+    # Auto-detect income if not specified
+    detected_income = is_income if is_income is not None else tx["amount"] >= 0
+    
+    if detected_income and is_salary_transaction(tx["description"]) and tx["currency"] == "PLN":
+        create_automatic_savings_transfer(tx, account)
