@@ -1,0 +1,32 @@
+# Environment Variables Template for Multi-Bank Notion Sync
+# Copy these to your .env file and update with your actual values
+
+# Notion API Configuration
+NOTION_TOKEN=your_notion_integration_token_here
+EXPENSES_DB_ID=your_expenses_database_id_here
+INCOME_DB_ID=your_income_database_id_here
+
+# Revolut/TrueLayer API Configuration
+TL_CLIENT_ID=your_truelayer_client_id_here
+TL_CLIENT_SECRET=your_truelayer_client_secret_here
+TL_REDIRECT_URI=http://localhost:8000/callback
+TL_AUTH_BASE=https://auth.truelayer.com
+TL_API_BASE=https://api.truelayer.com
+
+# BNP Paribas API Configuration
+# Note: These values need to be updated once you have access to BNP Paribas API
+BNP_CLIENT_ID=your_bnp_client_id_here
+BNP_CLIENT_SECRET=your_bnp_client_secret_here  
+BNP_REDIRECT_URI=http://localhost:8000/callback/bnp
+BNP_API_BASE=https://apistore.bnpparibas.com
+BNP_AUTH_BASE=https://auth.bnpparibas.com
+
+# Instructions:
+# 1. Copy these variables to your .env file
+# 2. Replace all placeholder values with your actual API credentials
+# 3. For BNP Paribas, you'll need to:
+#    - Register at https://apistore.bnpparibas.com
+#    - Create an application and get your client credentials
+#    - Configure the redirect URI in your BNP app settings
+#    - Update the API base URLs if they differ from the placeholder values
+#    - The exact OAuth flow may vary - check BNP documentation and update bnp_notion_connector.py accordingly

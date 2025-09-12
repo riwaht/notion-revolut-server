@@ -123,7 +123,10 @@
     ],
     "Savings": [
       "vault",
-      "skarb"
+      "skarb",
+      "bnp savings",
+      "to savings",
+      "savings transfer"
     ],
     "Travel": [
       "airbnb",
@@ -224,11 +227,13 @@
     ],
     "Savings": [
       "vault",
-      "revolut vault",
       "interest",
       "return from savings",
       "investment return",
-      "skarb"
+      "skarb",
+      "from bnp savings",
+      "savings withdrawal",
+      "bnp paribas"
     ],
     "Repaid": [
       "repaid",

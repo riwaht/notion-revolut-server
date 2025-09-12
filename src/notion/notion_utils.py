@@ -52,7 +52,7 @@ INCOME_CATEGORY_IDS = {
 ACCOUNT_IDS = {
     "PLN": "24e364a1215e80faba4ec73df82d4aac",
     "INTERNATIONAL": "245364a1215e8082ba70c1831590fc89",  # Card International (USD/EUR/other currencies)
-    "SAVINGS": "24e364a1215e80778100e822ec199a0a",
+    "BNP_SAVINGS": "24e364a1215e80778100e822ec199a0a",  # BNP Paribas Savings Account
     "DEFAULT": "12e364a1215e808daed4e333e7f3efd1",
 }
 
@@ -66,39 +66,70 @@ def is_salary_transaction(description: str) -> bool:
     return any(keyword in description.lower() for keyword in salary_keywords)
 
 
+def is_bnp_transaction(account) -> bool:
+    """Check if transaction is from BNP Paribas account"""
+    if isinstance(account, dict):
+        account_name = account.get("display_name", "").lower()
+        account_type = account.get("account_type", "").lower()
+        return "bnp" in account_name or account_type == "savings" or account_name == "bnp paribas savings"
+    return False
+
+
+def detect_account_from_description(description: str, currency: str, account=None) -> str:
+    """Detect which account to use based on transaction description and context"""
+    description_lower = description.lower()
+    
+    # BNP Paribas account detection
+    if is_bnp_transaction(account):
+        return "BNP_SAVINGS"
+    
+    # Savings-related keywords (all now go to BNP Paribas)
+    savings_keywords = ["bnp", "bnp paribas", "from savings", "to savings", "savings account", "vault", "skarb"]
+    if any(keyword in description_lower for keyword in savings_keywords):
+        return "BNP_SAVINGS"
+    
+    # Currency-based account mapping
+    if currency == "PLN":
+        return "PLN"
+    elif currency in ["USD", "EUR", "GBP", "HUF"]:
+        return "INTERNATIONAL"
+    else:
+        return "DEFAULT"
+
+
 def create_automatic_savings_transfer(original_tx, account):
-    """Create automatic transfer from PLN to Savings when salary is received"""
+    """Create automatic transfer from PLN to BNP Paribas Savings when salary is received"""
     if original_tx["currency"] != "PLN":
         return  # Only transfer from PLN transactions
     
     date_obj = datetime.fromisoformat(original_tx["timestamp"].replace("Z", "+00:00"))
     date_str = date_obj.date().isoformat()
     
-    print(f"💰 Creating automatic savings transfer of {AUTO_SAVINGS_AMOUNT} PLN")
+    print(f"💰 Creating automatic BNP savings transfer of {AUTO_SAVINGS_AMOUNT} PLN")
     
     # Create expense transaction (money leaving PLN account)
     expense_tx = {
         "amount": -AUTO_SAVINGS_AMOUNT,
         "currency": "PLN",
-        "description": f"Auto transfer to savings - {AUTO_SAVINGS_AMOUNT} PLN",
+        "description": f"Auto transfer to BNP savings - {AUTO_SAVINGS_AMOUNT} PLN",
         "timestamp": original_tx["timestamp"],
-        "transaction_id": f"auto_savings_expense_{original_tx['transaction_id']}"
+        "transaction_id": f"auto_bnp_savings_expense_{original_tx['transaction_id']}"
     }
     
-    # Create income transaction (money entering Savings account)  
+    # Create income transaction (money entering BNP Savings account)  
     income_tx = {
         "amount": AUTO_SAVINGS_AMOUNT,
         "currency": "PLN",
-        "description": f"Auto transfer from PLN - {AUTO_SAVINGS_AMOUNT} PLN",
+        "description": f"Auto transfer from PLN to BNP savings - {AUTO_SAVINGS_AMOUNT} PLN",
         "timestamp": original_tx["timestamp"],
-        "transaction_id": f"auto_savings_income_{original_tx['transaction_id']}"
+        "transaction_id": f"auto_bnp_savings_income_{original_tx['transaction_id']}"
     }
     
     # Post the expense (PLN account loses money)
     post_transaction_to_notion_internal(expense_tx, account, is_income=False, force_account="PLN")
     
-    # Post the income (Savings account gains money)
-    post_transaction_to_notion_internal(income_tx, account, is_income=True, force_account="SAVINGS")
+    # Post the income (BNP Savings account gains money)
+    post_transaction_to_notion_internal(income_tx, account, is_income=True, force_account="BNP_SAVINGS")
 
 
 def post_transaction_to_notion_internal(tx, account, is_income=None, force_account=None):
@@ -119,13 +150,10 @@ def post_transaction_to_notion_internal(tx, account, is_income=None, force_accou
     # Determine account relation
     if force_account:
         account_relation_id = ACCOUNT_IDS[force_account]
-    elif "vault" in description.lower():
-        account_relation_id = ACCOUNT_IDS["SAVINGS"]
-    elif currency == "PLN":
-        account_relation_id = ACCOUNT_IDS["PLN"]
     else:
-        # All non-PLN currencies (EUR, USD, HUF, etc.) go to Card International
-        account_relation_id = ACCOUNT_IDS["INTERNATIONAL"]
+        # Use new account detection logic
+        account_key = detect_account_from_description(description, currency, account)
+        account_relation_id = ACCOUNT_IDS.get(account_key, ACCOUNT_IDS["DEFAULT"])
 
     # Special cases and category determination
     if currency not in ["USD", "PLN"]:
@@ -176,8 +204,8 @@ def post_transaction_to_notion_internal(tx, account, is_income=None, force_accou
         account_name = "Card International"
     elif account_relation_id == ACCOUNT_IDS["PLN"]:
         account_name = "PLN"
-    elif account_relation_id == ACCOUNT_IDS["SAVINGS"]:
-        account_name = "Savings"
+    elif account_relation_id == ACCOUNT_IDS["BNP_SAVINGS"]:
+        account_name = "BNP Paribas Savings"
     else:
         account_name = "DEFAULT"
     
