@@ -66,6 +66,47 @@ def is_salary_transaction(description: str) -> bool:
     return any(keyword in description.lower() for keyword in salary_keywords)
 
 
+def parse_exchange_currencies(description: str):
+    """
+    Parse exchange transaction description to extract source and destination currencies.
+    Returns tuple of (source_currency, destination_currency) or (None, None) if not parseable.
+    
+    Expected formats:
+    - "Exchanged to EUR"
+    - "Exchanged from PLN to EUR"
+    - "PLN exchanged to EUR"
+    """
+    desc_lower = description.lower()
+    
+    # Try to find patterns like "exchanged to EUR", "exchanged from PLN to EUR", etc.
+    import re
+    
+    # Pattern 1: "Exchanged from PLN to EUR"
+    match = re.search(r'exchanged from ([A-Z]{3}) to ([A-Z]{3})', description, re.IGNORECASE)
+    if match:
+        return match.group(1).upper(), match.group(2).upper()
+    
+    # Pattern 2: "PLN exchanged to EUR" 
+    match = re.search(r'([A-Z]{3}) exchanged to ([A-Z]{3})', description, re.IGNORECASE)
+    if match:
+        return match.group(1).upper(), match.group(2).upper()
+        
+    # Pattern 3: "Exchanged to EUR" (need to infer source currency from tx context)
+    match = re.search(r'exchanged to ([A-Z]{3})', description, re.IGNORECASE)
+    if match:
+        destination = match.group(1).upper()
+        # We'll return None for source and let the caller handle it
+        return None, destination
+        
+    # Pattern 4: "Exchanged from PLN"
+    match = re.search(r'exchanged from ([A-Z]{3})', description, re.IGNORECASE)
+    if match:
+        source = match.group(1).upper()
+        return source, None
+    
+    return None, None
+
+
 def create_automatic_savings_transfer(original_tx, account):
     """Create automatic transfer from PLN to Savings when salary is received"""
     if original_tx["currency"] != "PLN":
@@ -116,11 +157,31 @@ def post_transaction_to_notion_internal(tx, account, is_income=None, force_accou
 
     db_id = DB_IDS["income"] if is_income else DB_IDS["expenses"]
 
-    # Determine account relation
+    # Determine account relation - handle exchange transactions specially
     if force_account:
         account_relation_id = ACCOUNT_IDS[force_account]
     elif "vault" in description.lower():
         account_relation_id = ACCOUNT_IDS["SAVINGS"]
+    elif "exchanged" in description.lower():
+        # Special handling for exchange transactions
+        source_currency, dest_currency = parse_exchange_currencies(description)
+        
+        # Determine which currency to use for account assignment
+        if is_income:
+            # For income (money received), use destination currency
+            # If we can parse destination currency, use it; otherwise fall back to tx currency
+            account_currency = dest_currency if dest_currency else currency
+        else:
+            # For expense (money sent), use source currency
+            # If we can parse source currency, use it; otherwise fall back to tx currency
+            account_currency = source_currency if source_currency else currency
+        
+        # Now assign account based on the determined currency
+        if account_currency == "PLN":
+            account_relation_id = ACCOUNT_IDS["PLN"]
+        else:
+            # All non-PLN currencies (EUR, USD, HUF, etc.) go to Card International
+            account_relation_id = ACCOUNT_IDS["INTERNATIONAL"]
     elif currency == "PLN":
         account_relation_id = ACCOUNT_IDS["PLN"]
     else:

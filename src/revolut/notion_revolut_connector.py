@@ -161,19 +161,48 @@ def main():
             if is_exchange_transaction(tx):
                 # For exchanges, create both expense and income transactions
                 print(f"  🔄 Exchange detected ({tx['currency']}) - creating dual transactions")
+                
+                # Parse currencies from the exchange description
+                from src.notion.notion_utils import parse_exchange_currencies
+                source_currency, dest_currency = parse_exchange_currencies(tx["description"])
+                
                 if tx["amount"] > 0:
                     # This is the income side (money received)
-                    post_transaction_to_notion(tx, account, is_income=True)
+                    income_tx = tx.copy()
+                    # Set the destination currency if we can parse it
+                    if dest_currency:
+                        income_tx["currency"] = dest_currency
+                    post_transaction_to_notion(income_tx, account, is_income=True)
+                    
                     # Create the corresponding expense with negative amount
                     expense_tx = tx.copy()
                     expense_tx["amount"] = -abs(tx["amount"])
+                    # Set the source currency if we can parse it, otherwise infer
+                    if source_currency:
+                        expense_tx["currency"] = source_currency
+                    elif dest_currency and dest_currency != tx["currency"]:
+                        # If we know the destination and it's different from tx currency,
+                        # then tx currency is likely the source
+                        expense_tx["currency"] = tx["currency"]
                     post_transaction_to_notion(expense_tx, account, is_income=False)
                 else:
                     # This is the expense side (money sent)
-                    post_transaction_to_notion(tx, account, is_income=False)
+                    expense_tx = tx.copy()
+                    # Set the source currency if we can parse it
+                    if source_currency:
+                        expense_tx["currency"] = source_currency
+                    post_transaction_to_notion(expense_tx, account, is_income=False)
+                    
                     # Create the corresponding income with positive amount
                     income_tx = tx.copy()
                     income_tx["amount"] = abs(tx["amount"])
+                    # Set the destination currency if we can parse it, otherwise infer
+                    if dest_currency:
+                        income_tx["currency"] = dest_currency
+                    elif source_currency and source_currency != tx["currency"]:
+                        # If we know the source and it's different from tx currency,
+                        # then tx currency is likely the destination
+                        income_tx["currency"] = tx["currency"]
                     post_transaction_to_notion(income_tx, account, is_income=True)
             else:
                 # Regular transaction
