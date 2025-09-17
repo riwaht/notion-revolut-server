@@ -135,6 +135,11 @@ def main():
 
     logged_tx_ids = load_logged_transactions()
     new_logged_tx_ids = set()
+    
+    # Track sync results
+    successful_transactions = 0
+    failed_transactions = 0
+    skipped_transactions = 0
 
     accounts = get_accounts(token)
     print(f"Found {len(accounts)} Revolut accounts")
@@ -149,10 +154,12 @@ def main():
             if tx_id in logged_tx_ids:
                 tx_id_short = tx_id[:12]
                 print(f"⏭️  [{tx_id_short}] Already logged {tx['description']} — skipping")
+                skipped_transactions += 1
                 continue
 
             tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
             if tx_time <= CUTOFF_TIMESTAMP:
+                skipped_transactions += 1
                 continue
 
             tx_id_short = tx["transaction_id"][:12]
@@ -172,7 +179,8 @@ def main():
                     # Set the destination currency if we can parse it
                     if dest_currency:
                         income_tx["currency"] = dest_currency
-                    post_transaction_to_notion(income_tx, account, is_income=True)
+                    
+                    income_success = post_transaction_to_notion(income_tx, account, is_income=True)
                     
                     # Create the corresponding expense with negative amount
                     expense_tx = tx.copy()
@@ -184,14 +192,22 @@ def main():
                         # If we know the destination and it's different from tx currency,
                         # then tx currency is likely the source
                         expense_tx["currency"] = tx["currency"]
-                    post_transaction_to_notion(expense_tx, account, is_income=False)
+                    
+                    expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
+                    
+                    # Track results for dual exchange transaction
+                    if income_success and expense_success:
+                        successful_transactions += 1
+                    else:
+                        failed_transactions += 1
                 else:
                     # This is the expense side (money sent)
                     expense_tx = tx.copy()
                     # Set the source currency if we can parse it
                     if source_currency:
                         expense_tx["currency"] = source_currency
-                    post_transaction_to_notion(expense_tx, account, is_income=False)
+                    
+                    expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
                     
                     # Create the corresponding income with positive amount
                     income_tx = tx.copy()
@@ -203,19 +219,49 @@ def main():
                         # If we know the source and it's different from tx currency,
                         # then tx currency is likely the destination
                         income_tx["currency"] = tx["currency"]
-                    post_transaction_to_notion(income_tx, account, is_income=True)
+                    
+                    income_success = post_transaction_to_notion(income_tx, account, is_income=True)
+                    
+                    # Track results for dual exchange transaction
+                    if income_success and expense_success:
+                        successful_transactions += 1
+                    else:
+                        failed_transactions += 1
             else:
                 # Regular transaction
                 is_income = tx["amount"] >= 0
                 tx_type = "income" if is_income else "expense"
                 print(f"  📝 Regular {tx_type} transaction")
-                post_transaction_to_notion(tx, account, is_income=is_income)
+                
+                success = post_transaction_to_notion(tx, account, is_income=is_income)
+                if success:
+                    successful_transactions += 1
+                else:
+                    failed_transactions += 1
             
             new_logged_tx_ids.add(tx_id)
 
     # Save updated list
     all_logged_tx_ids = logged_tx_ids.union(new_logged_tx_ids)
     save_logged_transactions(all_logged_tx_ids)
+    
+    # Print comprehensive sync summary
+    total_processed = successful_transactions + failed_transactions
+    print(f"\n📊 Sync Summary:")
+    print(f"  ✅ Successful: {successful_transactions}")
+    print(f"  ❌ Failed: {failed_transactions}")
+    print(f"  ⏭️  Skipped: {skipped_transactions}")
+    print(f"  📝 Total Processed: {total_processed}")
+    
+    if failed_transactions > 0:
+        print(f"  💡 Run POST /retry-failed to retry failed transactions")
+    
+    return {
+        "successful": successful_transactions,
+        "failed": failed_transactions,
+        "skipped": skipped_transactions,
+        "total_processed": total_processed
+    }
 
 if __name__ == "__main__":
     main()

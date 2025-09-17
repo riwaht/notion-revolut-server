@@ -50,9 +50,9 @@ def categorize_transaction(description: str, is_income: bool = False) -> str:
 
     description = description.lower().strip()
 
-    # Hardcoded Savings override (removed savings transfer logic)
-    if any(keyword in description for keyword in ["vault", "to usd", "to eur"]):
-        return "Savings"
+    # First check for exchange transactions (highest priority)
+    if any(keyword in description for keyword in ["exchanged to", "exchanged from", "vault", "to usd", "to eur"]):
+        return "Transaction"
 
     keyword_map = INCOME_KEYWORDS if is_income else EXPENSE_KEYWORDS
     for category, keywords in keyword_map.items():

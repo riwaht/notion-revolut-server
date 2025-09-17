@@ -121,10 +121,6 @@
       "fit",
       "Klub Sportowy"
     ],
-    "Savings": [
-      "vault",
-      "skarb"
-    ],
     "Travel": [
       "airbnb",
       "hotel",
@@ -195,7 +191,11 @@
     ],
     "Transaction": [
       "exchanged to",
-      "exchanged from"
+      "exchanged from",
+      "vault",
+      "skarb",
+      "to usd",
+      "to eur"
     ],
     "Others": []
   },
@@ -222,14 +222,6 @@
       "from mama",
       "from home"
     ],
-    "Savings": [
-      "vault",
-      "revolut vault",
-      "interest",
-      "return from savings",
-      "investment return",
-      "skarb"
-    ],
     "Repaid": [
       "repaid",
       "returned",
@@ -244,7 +236,15 @@
     ],
     "Transaction": [
       "exchanged to",
-      "exchanged from"
+      "exchanged from",
+      "vault",
+      "revolut vault",
+      "interest",
+      "return from savings",
+      "investment return",
+      "skarb",
+      "to usd",
+      "to eur"
     ],
     "Others": []
   }
