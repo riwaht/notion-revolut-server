@@ -116,6 +116,28 @@ def get_transactions(token, account_id):
 def is_exchange_transaction(tx):
     return "exchanged to" in tx["description"].lower() or "exchanged from" in tx["description"].lower()
 
+def get_exchange_identifier(tx):
+    """
+    Create a unique identifier for exchange transactions to group related pairs.
+    This helps avoid processing the same exchange multiple times.
+    Exchange pairs have different amounts due to exchange rates, so we use
+    description and time-based grouping instead.
+    """
+    # Get the timestamp rounded to the nearest minute for grouping
+    tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
+    # Round to nearest minute to group related exchange transactions
+    rounded_time = tx_time.replace(second=0, microsecond=0)
+    
+    # Create a normalized description that will be the same for both sides
+    # of an exchange transaction
+    desc_normalized = tx['description'].lower().strip()
+    
+    # Use a hash of the normalized description and rounded timestamp
+    # This should be the same for both sides of an exchange pair
+    identifier_hash = abs(hash(f"{desc_normalized}_{rounded_time}"))
+    
+    return f"exchange_{rounded_time.date()}_{identifier_hash}"
+
 def main():
     token = None
     if os.path.exists(TOKENS_FILE):
@@ -140,6 +162,9 @@ def main():
     successful_transactions = 0
     failed_transactions = 0
     skipped_transactions = 0
+    
+    # Track processed exchanges to avoid duplicates
+    processed_exchanges = set()
 
     accounts = get_accounts(token)
     print(f"Found {len(accounts)} Revolut accounts")
@@ -166,6 +191,16 @@ def main():
             print(f"→ [{tx_id_short}] Logging {tx['description']} | {tx['amount']} {tx['currency']}")
             
             if is_exchange_transaction(tx):
+                # Check if we've already processed this exchange
+                exchange_id = get_exchange_identifier(tx)
+                if exchange_id in processed_exchanges:
+                    print(f"  ⏭️  Exchange already processed, skipping duplicate")
+                    skipped_transactions += 1
+                    continue
+                
+                # Mark this exchange as processed
+                processed_exchanges.add(exchange_id)
+                
                 # For exchanges, create both expense and income transactions
                 print(f"  🔄 Exchange detected ({tx['currency']}) - creating dual transactions")
                 
@@ -173,60 +208,40 @@ def main():
                 from src.notion.notion_utils import parse_exchange_currencies
                 source_currency, dest_currency = parse_exchange_currencies(tx["description"])
                 
-                if tx["amount"] > 0:
-                    # This is the income side (money received)
-                    income_tx = tx.copy()
-                    # Set the destination currency if we can parse it
-                    if dest_currency:
-                        income_tx["currency"] = dest_currency
-                    
-                    income_success = post_transaction_to_notion(income_tx, account, is_income=True)
-                    
-                    # Create the corresponding expense with negative amount
-                    expense_tx = tx.copy()
-                    expense_tx["amount"] = -abs(tx["amount"])
-                    # Set the source currency if we can parse it, otherwise infer
-                    if source_currency:
-                        expense_tx["currency"] = source_currency
-                    elif dest_currency and dest_currency != tx["currency"]:
-                        # If we know the destination and it's different from tx currency,
-                        # then tx currency is likely the source
-                        expense_tx["currency"] = tx["currency"]
-                    
-                    expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
-                    
-                    # Track results for dual exchange transaction
-                    if income_success and expense_success:
-                        successful_transactions += 1
-                    else:
-                        failed_transactions += 1
+                # Always create both transactions regardless of which side we encounter first
+                abs_amount = abs(tx["amount"])
+                
+                # Create the expense transaction (money sent)
+                expense_tx = tx.copy()
+                expense_tx["amount"] = -abs_amount  # Ensure negative for expense
+                # Set the source currency if we can parse it
+                if source_currency:
+                    expense_tx["currency"] = source_currency
+                elif tx["amount"] < 0:
+                    # If this transaction is negative, its currency is likely the source
+                    expense_tx["currency"] = tx["currency"]
+                
+                expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
+                
+                # Create the income transaction (money received)
+                income_tx = tx.copy()
+                income_tx["amount"] = abs_amount  # Ensure positive for income
+                # Set the destination currency if we can parse it
+                if dest_currency:
+                    income_tx["currency"] = dest_currency
+                elif tx["amount"] > 0:
+                    # If this transaction is positive, its currency is likely the destination
+                    income_tx["currency"] = tx["currency"]
+                
+                income_success = post_transaction_to_notion(income_tx, account, is_income=True)
+                
+                # Track results for dual exchange transaction
+                if income_success and expense_success:
+                    successful_transactions += 1
+                    print(f"  ✅ Exchange processed successfully")
                 else:
-                    # This is the expense side (money sent)
-                    expense_tx = tx.copy()
-                    # Set the source currency if we can parse it
-                    if source_currency:
-                        expense_tx["currency"] = source_currency
-                    
-                    expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
-                    
-                    # Create the corresponding income with positive amount
-                    income_tx = tx.copy()
-                    income_tx["amount"] = abs(tx["amount"])
-                    # Set the destination currency if we can parse it, otherwise infer
-                    if dest_currency:
-                        income_tx["currency"] = dest_currency
-                    elif source_currency and source_currency != tx["currency"]:
-                        # If we know the source and it's different from tx currency,
-                        # then tx currency is likely the destination
-                        income_tx["currency"] = tx["currency"]
-                    
-                    income_success = post_transaction_to_notion(income_tx, account, is_income=True)
-                    
-                    # Track results for dual exchange transaction
-                    if income_success and expense_success:
-                        successful_transactions += 1
-                    else:
-                        failed_transactions += 1
+                    failed_transactions += 1
+                    print(f"  ❌ Exchange processing failed")
             else:
                 # Regular transaction
                 is_income = tx["amount"] >= 0
