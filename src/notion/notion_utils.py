@@ -190,7 +190,7 @@ def parse_exchange_currencies(description: str):
     return None, None
 
 
-def post_transaction_to_notion_internal(tx, account, is_income=None, force_account=None):
+def post_transaction_to_notion_internal(tx, account, is_income=None, force_account=None, override_usd_amount=None):
     raw_amount = abs(tx["amount"])
     currency = tx["currency"]
     description = tx["description"]
@@ -252,11 +252,17 @@ def post_transaction_to_notion_internal(tx, account, is_income=None, force_accou
     date_str = date_obj.date().isoformat()
 
     # Convert to USD for consistent tracking with fallback
-    try:
-        converted_amount = converter.convert_to_usd(Decimal(str(raw_amount)), currency, date_str)
-    except Exception as e:
-        print(f"⚠️  [{tx_id}] Currency conversion failed: {e}, using raw amount")
-        converted_amount = float(raw_amount)  # Fallback to raw amount
+    if override_usd_amount is not None:
+        # Use the provided USD amount (for exchange transactions to maintain balance)
+        converted_amount = float(override_usd_amount)
+        print(f"[INFO] Using override USD amount: {converted_amount}")
+    else:
+        # Normal currency conversion
+        try:
+            converted_amount = converter.convert_to_usd(Decimal(str(raw_amount)), currency, date_str)
+        except Exception as e:
+            print(f"⚠️  [{tx_id}] Currency conversion failed: {e}, using raw amount")
+            converted_amount = float(raw_amount)  # Fallback to raw amount
 
     # Build Notion properties with graceful degradation
     properties = {
@@ -441,13 +447,19 @@ def retry_failed_transactions():
         print(f"⚠️  Error updating failed transactions file: {e}")
 
 
-def post_transaction_to_notion(tx, account, is_income=None):
+def post_transaction_to_notion(tx, account, is_income=None, override_usd_amount=None):
     """
     Main function to post transactions to Notion with graceful error handling.
     Returns True if successful, False if failed.
+    
+    Args:
+        tx: Transaction data
+        account: Account data
+        is_income: Whether this is an income transaction
+        override_usd_amount: Optional USD amount to use instead of automatic conversion
     """
     try:
-        return post_transaction_to_notion_internal(tx, account, is_income)
+        return post_transaction_to_notion_internal(tx, account, is_income, override_usd_amount=override_usd_amount)
     except Exception as e:
         tx_id = tx.get("transaction_id", "unknown")[:12]
         print(f"💥 [{tx_id}] Critical error in transaction posting: {e}")

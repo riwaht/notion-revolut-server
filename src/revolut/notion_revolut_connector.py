@@ -211,6 +211,22 @@ def main():
                 # Always create both transactions regardless of which side we encounter first
                 abs_amount = abs(tx["amount"])
                 
+                # Calculate a single USD amount to use for both sides of the exchange
+                # This ensures balanced accounting in USD terms
+                tx_date = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00")).date()
+                date_str = tx_date.isoformat()
+                
+                # Use the current transaction's amount as the reference for USD conversion
+                from src.utils.exchange_utils import converter
+                from decimal import Decimal
+                
+                try:
+                    reference_usd_amount = converter.convert_to_usd(Decimal(str(abs_amount)), tx["currency"], date_str)
+                    print(f"  💰 Reference USD amount for exchange: {reference_usd_amount}")
+                except Exception as e:
+                    print(f"  ⚠️  USD conversion failed, using raw amount: {e}")
+                    reference_usd_amount = abs_amount
+                
                 # Create the expense transaction (money sent)
                 expense_tx = tx.copy()
                 expense_tx["amount"] = -abs_amount  # Ensure negative for expense
@@ -221,7 +237,7 @@ def main():
                     # If this transaction is negative, its currency is likely the source
                     expense_tx["currency"] = tx["currency"]
                 
-                expense_success = post_transaction_to_notion(expense_tx, account, is_income=False)
+                expense_success = post_transaction_to_notion(expense_tx, account, is_income=False, override_usd_amount=reference_usd_amount)
                 
                 # Create the income transaction (money received)
                 income_tx = tx.copy()
@@ -233,7 +249,7 @@ def main():
                     # If this transaction is positive, its currency is likely the destination
                     income_tx["currency"] = tx["currency"]
                 
-                income_success = post_transaction_to_notion(income_tx, account, is_income=True)
+                income_success = post_transaction_to_notion(income_tx, account, is_income=True, override_usd_amount=reference_usd_amount)
                 
                 # Track results for dual exchange transaction
                 if income_success and expense_success:
