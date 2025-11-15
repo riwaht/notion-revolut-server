@@ -116,80 +116,6 @@ def get_transactions(token, account_id):
 def is_exchange_transaction(tx):
     return "exchanged to" in tx["description"].lower() or "exchanged from" in tx["description"].lower()
 
-def find_matching_exchange(current_tx, all_txns, current_index):
-    """
-    Look for a matching exchange transaction in adjacent transactions.
-    Returns the matching transaction if found, None otherwise.
-    """
-    if not is_exchange_transaction(current_tx):
-        return None
-    
-    current_time = datetime.fromisoformat(current_tx["timestamp"].replace("Z", "+00:00"))
-    current_currency = current_tx["currency"]
-    current_amount = current_tx["amount"]
-    
-    # Look in a small window around the current transaction (±5 transactions)
-    search_range = 5
-    start_idx = max(0, current_index - search_range)
-    end_idx = min(len(all_txns), current_index + search_range + 1)
-    
-    for i in range(start_idx, end_idx):
-        if i == current_index:  # Skip current transaction
-            continue
-            
-        candidate = all_txns[i]
-        
-        # Must be an exchange transaction
-        if not is_exchange_transaction(candidate):
-            continue
-            
-        candidate_time = datetime.fromisoformat(candidate["timestamp"].replace("Z", "+00:00"))
-        candidate_currency = candidate["currency"]
-        candidate_amount = candidate["amount"]
-        
-        # Check if they're close in time (within 5 minutes)
-        time_diff = abs((current_time - candidate_time).total_seconds())
-        if time_diff > 300:  # 5 minutes
-            continue
-            
-        # Check if they're opposite sides of the same exchange
-        # They should have different currencies and opposite signs
-        if (current_currency != candidate_currency and 
-            ((current_amount > 0 and candidate_amount < 0) or 
-             (current_amount < 0 and candidate_amount > 0))):
-            
-            # Additional check: similar descriptions indicating same exchange
-            current_desc = current_tx["description"].lower()
-            candidate_desc = candidate["description"].lower()
-            
-            # Both should contain "exchange" and have some overlap
-            if ("exchange" in current_desc and "exchange" in candidate_desc):
-                print(f"    🔗 Found matching exchange pair: {current_tx['currency']} ↔ {candidate['currency']}")
-                return candidate
-    
-    return None
-
-def get_exchange_identifier(tx):
-    """
-    Create a unique identifier for exchange transactions to group related pairs.
-    This helps avoid processing the same exchange multiple times.
-    Exchange pairs have different amounts due to exchange rates, so we use
-    description and time-based grouping instead.
-    """
-    # Get the timestamp rounded to the nearest minute for grouping
-    tx_time = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00"))
-    # Round to nearest minute to group related exchange transactions
-    rounded_time = tx_time.replace(second=0, microsecond=0)
-    
-    # Create a normalized description that will be the same for both sides
-    # of an exchange transaction
-    desc_normalized = tx['description'].lower().strip()
-    
-    # Use a hash of the normalized description and rounded timestamp
-    # This should be the same for both sides of an exchange pair
-    identifier_hash = abs(hash(f"{desc_normalized}_{rounded_time}"))
-    
-    return f"exchange_{rounded_time.date()}_{identifier_hash}"
 
 def main():
     token = None
@@ -216,9 +142,6 @@ def main():
     failed_transactions = 0
     skipped_transactions = 0
     
-    # Track processed exchange pairs to avoid duplicates
-    processed_exchange_pairs = set()
-
     accounts = get_accounts(token)
     print(f"Found {len(accounts)} Revolut accounts")
 
@@ -227,7 +150,7 @@ def main():
         txns = get_transactions(token, account["account_id"])
         print(f"💳 {len(txns)} transactions:")
 
-        for i, tx in enumerate(txns[:10]):
+        for tx in txns[:10]:
             tx_id = tx["transaction_id"]
             if tx_id in logged_tx_ids:
                 tx_id_short = tx_id[:12]
@@ -243,108 +166,20 @@ def main():
             tx_id_short = tx["transaction_id"][:12]
             print(f"→ [{tx_id_short}] Logging {tx['description']} | {tx['amount']} {tx['currency']}")
             
+            # Process each transaction as-is (no special exchange handling)
+            is_income = tx["amount"] >= 0
+            tx_type = "income" if is_income else "expense"
+            
             if is_exchange_transaction(tx):
-                # Look for matching exchange transaction
-                matching_tx = find_matching_exchange(tx, txns[:10], i)
-                
-                if matching_tx:
-                    # We found a pair - create pair identifier to avoid processing twice
-                    pair_id = f"{min(tx['transaction_id'], matching_tx['transaction_id'])}_{max(tx['transaction_id'], matching_tx['transaction_id'])}"
-                    
-                    if pair_id in processed_exchange_pairs:
-                        print(f"  ⏭️  Exchange pair already processed, skipping")
-                        skipped_transactions += 1
-                        continue
-                    
-                    # Mark this pair as processed
-                    processed_exchange_pairs.add(pair_id)
-                    
-                    print(f"  🔄 Paired exchange detected - processing individual transactions")
-                    
-                    # Process each transaction as-is (no dual creation)
-                    current_is_income = tx["amount"] >= 0
-                    matching_is_income = matching_tx["amount"] >= 0
-                    
-                    print(f"    Processing current: {tx['amount']} {tx['currency']} ({'income' if current_is_income else 'expense'})")
-                    current_success = post_transaction_to_notion(tx, account, is_income=current_is_income)
-                    
-                    print(f"    Processing matching: {matching_tx['amount']} {matching_tx['currency']} ({'income' if matching_is_income else 'expense'})")
-                    matching_success = post_transaction_to_notion(matching_tx, account, is_income=matching_is_income)
-                    
-                    # Track results for paired exchange
-                    if current_success and matching_success:
-                        successful_transactions += 1
-                        print(f"  ✅ Paired exchange processed successfully")
-                    else:
-                        failed_transactions += 1
-                        print(f"  ❌ Paired exchange processing failed")
-                        
-                    # Also mark the matching transaction as logged to avoid processing it again
-                    new_logged_tx_ids.add(matching_tx["transaction_id"])
-                    
-                else:
-                    # No matching transaction found - create dual entries as fallback
-                    print(f"  🔄 Single exchange detected ({tx['currency']}) - creating dual transactions")
-                    
-                    # Parse currencies from the exchange description  
-                    from src.notion.notion_utils import parse_exchange_currencies
-                    source_currency, dest_currency = parse_exchange_currencies(tx["description"])
-                    
-                    # Always create both transactions as fallback
-                    abs_amount = abs(tx["amount"])
-                    
-                    # Calculate a single USD amount to use for both sides
-                    tx_date = datetime.fromisoformat(tx["timestamp"].replace("Z", "+00:00")).date()
-                    date_str = tx_date.isoformat()
-                    
-                    from src.utils.exchange_utils import converter
-                    from decimal import Decimal
-                    
-                    try:
-                        reference_usd_amount = converter.convert_to_usd(Decimal(str(abs_amount)), tx["currency"], date_str)
-                        print(f"  💰 Reference USD amount for exchange: {reference_usd_amount}")
-                    except Exception as e:
-                        print(f"  ⚠️  USD conversion failed, using raw amount: {e}")
-                        reference_usd_amount = abs_amount
-                    
-                    # Create the expense transaction (money sent)
-                    expense_tx = tx.copy()
-                    expense_tx["amount"] = -abs_amount  # Ensure negative for expense
-                    if source_currency:
-                        expense_tx["currency"] = source_currency
-                    elif tx["amount"] < 0:
-                        expense_tx["currency"] = tx["currency"]
-                    
-                    expense_success = post_transaction_to_notion(expense_tx, account, is_income=False, override_usd_amount=reference_usd_amount)
-                    
-                    # Create the income transaction (money received)
-                    income_tx = tx.copy()
-                    income_tx["amount"] = abs_amount  # Ensure positive for income
-                    if dest_currency:
-                        income_tx["currency"] = dest_currency
-                    elif tx["amount"] > 0:
-                        income_tx["currency"] = tx["currency"]
-                    
-                    income_success = post_transaction_to_notion(income_tx, account, is_income=True, override_usd_amount=reference_usd_amount)
-                    
-                    # Track results for dual exchange transaction
-                    if income_success and expense_success:
-                        successful_transactions += 1
-                        print(f"  ✅ Single exchange processed successfully")
-                    else:
-                        failed_transactions += 1
-                        print(f"  ❌ Single exchange processing failed")
+                print(f"  🔄 Exchange {tx_type} transaction: {tx['amount']} {tx['currency']}")
             else:
-                # Regular transaction
-                is_income = tx["amount"] >= 0
-                tx_type = "income" if is_income else "expense"
                 print(f"  📝 Regular {tx_type} transaction")
-                
-                success = post_transaction_to_notion(tx, account, is_income=is_income)
-                if success:
-                    successful_transactions += 1
-                else:
-                    failed_transactions += 1
+            
+            success = post_transaction_to_notion(tx, account, is_income=is_income)
+            if success:
+                successful_transactions += 1
+            else:
+                failed_transactions += 1
             
             new_logged_tx_ids.add(tx_id)
 
