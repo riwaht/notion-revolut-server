@@ -568,6 +568,7 @@ def update_page_checkbox(page_id, property_name, value):
 def check_and_update_rent_payment(transactions):
     """
     Detect recurring rent payments from Riwa to Charbel and update Notion database.
+    Also updates the Utilities page since both are paid together in the same transaction.
     
     Rules:
     - Sender: Riwa (all transactions from this account are from Riwa)
@@ -576,7 +577,7 @@ def check_and_update_rent_payment(transactions):
     - Amount: ~748 EUR (746-750 EUR tolerance)
     
     Note: Assumes pages are already created in Notion (e.g., via automation on the 1st of each month).
-    This function only updates existing pages.
+    This function only updates existing pages. Updates both Rent and Utilities pages for the same month.
     
     Args:
         transactions: List of transaction dictionaries from TrueLayer API
@@ -631,41 +632,70 @@ def check_and_update_rent_payment(transactions):
                 "date": tx_date.isoformat(),
             })
             
-            # Format the expected page title: "Rent @<Month> 1, <Year>"
-            # e.g., "Rent @January 1, 2026"
+            # Format the expected page titles: "Rent @<Month> 1, <Year>" and "Utilities @<Month> 1, <Year>"
+            # e.g., "Rent @January 1, 2026" and "Utilities @January 1, 2026"
             month_name = tx_date.strftime("%B")
             year = tx_date.year
-            expected_title = f"Rent @{month_name} 1, {year}"
+            rent_title = f"Rent @{month_name} 1, {year}"
+            utilities_title = f"Utilities @{month_name} 1, {year}"
             
-            # Find the page in Notion (should already exist via automation)
-            page = find_page_by_title(recurring_db_id, expected_title)
+            # Find both pages in Notion (should already exist via automation)
+            rent_page = find_page_by_title(recurring_db_id, rent_title)
+            utilities_page = find_page_by_title(recurring_db_id, utilities_title)
             
-            if page:
-                # Update existing page
-                page_id = page["id"]
-                success = update_page_checkbox(page_id, "Riwa", True)
+            # Update Rent page
+            if rent_page:
+                rent_page_id = rent_page["id"]
+                rent_success = update_page_checkbox(rent_page_id, "Riwa", True)
                 
-                if success:
+                if rent_success:
                     updated_pages.append({
-                        "page_id": page_id,
-                        "title": expected_title,
+                        "page_id": rent_page_id,
+                        "title": rent_title,
                         "transaction_id": tx.get("transaction_id", "unknown")[:12]
                     })
-                    print(f"✅ Updated rent payment: {expected_title} (Transaction: {tx.get('transaction_id', 'unknown')[:12]})")
+                    print(f"✅ Updated rent payment: {rent_title} (Transaction: {tx.get('transaction_id', 'unknown')[:12]})")
                 else:
                     errors.append({
                         "action": "update",
-                        "title": expected_title,
+                        "title": rent_title,
                         "error": "Failed to update checkbox"
                     })
             else:
                 # Page not found - log as error (should be created by Notion automation)
                 errors.append({
                     "action": "page_not_found",
-                    "title": expected_title,
+                    "title": rent_title,
                     "error": "Page not found in database. Expected to be created by Notion automation on the 1st of the month."
                 })
-                print(f"⚠️  Page not found: {expected_title} - expected to be created by Notion automation")
+                print(f"⚠️  Page not found: {rent_title} - expected to be created by Notion automation")
+            
+            # Update Utilities page
+            if utilities_page:
+                utilities_page_id = utilities_page["id"]
+                utilities_success = update_page_checkbox(utilities_page_id, "Riwa", True)
+                
+                if utilities_success:
+                    updated_pages.append({
+                        "page_id": utilities_page_id,
+                        "title": utilities_title,
+                        "transaction_id": tx.get("transaction_id", "unknown")[:12]
+                    })
+                    print(f"✅ Updated utilities payment: {utilities_title} (Transaction: {tx.get('transaction_id', 'unknown')[:12]})")
+                else:
+                    errors.append({
+                        "action": "update",
+                        "title": utilities_title,
+                        "error": "Failed to update checkbox"
+                    })
+            else:
+                # Page not found - log as error (should be created by Notion automation)
+                errors.append({
+                    "action": "page_not_found",
+                    "title": utilities_title,
+                    "error": "Page not found in database. Expected to be created by Notion automation on the 1st of the month."
+                })
+                print(f"⚠️  Page not found: {utilities_title} - expected to be created by Notion automation")
                     
         except Exception as e:
             tx_id = tx.get("transaction_id", "unknown")[:12]
