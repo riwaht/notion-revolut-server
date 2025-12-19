@@ -22,6 +22,7 @@ HEADERS = {
 DB_IDS = {
     "expenses": os.getenv("EXPENSES_DB_ID", "default_expenses_db_id"),
     "income": os.getenv("INCOME_DB_ID", "default_income_db_id"),
+    "recurring": os.getenv("RECURRING_DB_ID", "febfee75-c600-41a6-a9b4-709071feb59f"),  # Recurring database ID
 }
 
 # Static mappings from names to Notion relation IDs
@@ -472,3 +473,216 @@ def post_transaction_to_notion(tx, account, is_income=None, override_usd_amount=
         }
         log_failed_transaction(tx, account, is_income, error_info)
         return False
+
+
+def query_notion_database(database_id, filter_condition=None):
+    """
+    Query a Notion database with optional filter conditions.
+    
+    Args:
+        database_id: The Notion database ID
+        filter_condition: Optional filter condition dict (Notion API format)
+    
+    Returns:
+        List of page results
+    """
+    url = f"https://api.notion.com/v1/databases/{database_id}/query"
+    
+    payload = {}
+    if filter_condition:
+        payload["filter"] = filter_condition
+    
+    try:
+        response = requests.post(url, headers=HEADERS, json=payload, timeout=30)
+        response.raise_for_status()
+        return response.json().get("results", [])
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error querying Notion database: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Response: {e.response.text[:200]}")
+        return []
+    except Exception as e:
+        print(f"⚠️  Unexpected error querying Notion database: {e}")
+        return []
+
+
+def find_page_by_title(database_id, title):
+    """
+    Find a page in a Notion database by its title.
+    
+    Args:
+        database_id: The Notion database ID
+        title: The title to search for
+    
+    Returns:
+        Page object if found, None otherwise
+    """
+    # Query database with title filter
+    filter_condition = {
+        "property": "Name",
+        "title": {
+            "equals": title
+        }
+    }
+    
+    results = query_notion_database(database_id, filter_condition)
+    
+    if results:
+        return results[0]
+    return None
+
+
+def update_page_checkbox(page_id, property_name, value):
+    """
+    Update a checkbox property on a Notion page.
+    
+    Args:
+        page_id: The Notion page ID
+        property_name: The name of the checkbox property
+        value: Boolean value to set
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    
+    payload = {
+        "properties": {
+            property_name: {
+                "checkbox": value
+            }
+        }
+    }
+    
+    try:
+        response = requests.patch(url, headers=HEADERS, json=payload, timeout=30)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"⚠️  Error updating page checkbox: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Response: {e.response.text[:200]}")
+        return False
+
+
+def check_and_update_rent_payment(transactions):
+    """
+    Detect recurring rent payments from Riwa to Charbel and update Notion database.
+    
+    Rules:
+    - Sender: Riwa (all transactions from this account are from Riwa)
+    - Recipient: Contains "Charbel B" or variations
+    - Date: Between 1st and 3rd of each month
+    - Amount: ~748 EUR (746-750 EUR tolerance)
+    
+    Note: Assumes pages are already created in Notion (e.g., via automation on the 1st of each month).
+    This function only updates existing pages.
+    
+    Args:
+        transactions: List of transaction dictionaries from TrueLayer API
+    
+    Returns:
+        Dictionary with summary of processed rent payments
+    """
+    recurring_db_id = DB_IDS["recurring"]
+    matched_payments = []
+    updated_pages = []
+    errors = []
+    
+    for tx in transactions:
+        try:
+            # Parse transaction details
+            description = tx.get("description", "").lower()
+            amount = abs(float(tx.get("amount", 0)))  # Use absolute value for expenses
+            currency = tx.get("currency", "").upper()
+            timestamp = tx.get("timestamp", "")
+            
+            # Parse date
+            tx_date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            day_of_month = tx_date.day
+            
+            # Check if transaction matches rent payment criteria
+            # 1. Check date: between 1st and 3rd of month
+            if day_of_month < 1 or day_of_month > 3:
+                continue
+            
+            # 2. Check recipient: contains "Charbel B" or variations
+            charbel_patterns = ["charbel b", "charbelb", "charbel b."]
+            if not any(pattern in description for pattern in charbel_patterns):
+                continue
+            
+            # 3. Check amount: ~748 EUR (746-750 EUR tolerance)
+            if currency != "EUR":
+                continue
+            
+            if amount < 746 or amount > 750:
+                continue
+            
+            # 4. Check if it's an expense (negative amount in original)
+            if tx.get("amount", 0) >= 0:
+                continue
+            
+            # Transaction matches all criteria!
+            matched_payments.append({
+                "transaction_id": tx.get("transaction_id", "unknown"),
+                "description": tx.get("description", ""),
+                "amount": amount,
+                "currency": currency,
+                "date": tx_date.isoformat(),
+            })
+            
+            # Format the expected page title: "Rent @<Month> 1, <Year>"
+            # e.g., "Rent @January 1, 2026"
+            month_name = tx_date.strftime("%B")
+            year = tx_date.year
+            expected_title = f"Rent @{month_name} 1, {year}"
+            
+            # Find the page in Notion (should already exist via automation)
+            page = find_page_by_title(recurring_db_id, expected_title)
+            
+            if page:
+                # Update existing page
+                page_id = page["id"]
+                success = update_page_checkbox(page_id, "Riwa", True)
+                
+                if success:
+                    updated_pages.append({
+                        "page_id": page_id,
+                        "title": expected_title,
+                        "transaction_id": tx.get("transaction_id", "unknown")[:12]
+                    })
+                    print(f"✅ Updated rent payment: {expected_title} (Transaction: {tx.get('transaction_id', 'unknown')[:12]})")
+                else:
+                    errors.append({
+                        "action": "update",
+                        "title": expected_title,
+                        "error": "Failed to update checkbox"
+                    })
+            else:
+                # Page not found - log as error (should be created by Notion automation)
+                errors.append({
+                    "action": "page_not_found",
+                    "title": expected_title,
+                    "error": "Page not found in database. Expected to be created by Notion automation on the 1st of the month."
+                })
+                print(f"⚠️  Page not found: {expected_title} - expected to be created by Notion automation")
+                    
+        except Exception as e:
+            tx_id = tx.get("transaction_id", "unknown")[:12]
+            errors.append({
+                "transaction_id": tx_id,
+                "error": str(e)
+            })
+            print(f"⚠️  Error processing transaction {tx_id}: {e}")
+    
+    # Return summary
+    return {
+        "matched_payments": len(matched_payments),
+        "updated_pages": len(updated_pages),
+        "errors": len(errors),
+        "details": {
+            "matched_payments": matched_payments,
+            "updated_pages": updated_pages,
+            "errors": errors
+        }
+    }

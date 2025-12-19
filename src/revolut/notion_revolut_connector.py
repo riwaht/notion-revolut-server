@@ -5,7 +5,7 @@ import urllib.parse
 import webbrowser
 import requests
 from dotenv import load_dotenv
-from src.notion.notion_utils import post_transaction_to_notion
+from src.notion.notion_utils import post_transaction_to_notion, check_and_update_rent_payment
 from datetime import datetime, timezone
 
 load_dotenv()
@@ -145,10 +145,16 @@ def main():
     accounts = get_accounts(token)
     print(f"Found {len(accounts)} Revolut accounts")
 
+    # Collect all transactions for rent payment detection
+    all_transactions = []
+
     for account in accounts:
         print(f"\n📒 {account['display_name']} ({account['account_type']}) — {account['currency']}")
         txns = get_transactions(token, account["account_id"])
         print(f"💳 {len(txns)} transactions:")
+        
+        # Collect transactions for rent payment detection
+        all_transactions.extend(txns)
 
         for tx in txns[:10]:
             tx_id = tx["transaction_id"]
@@ -187,22 +193,31 @@ def main():
     all_logged_tx_ids = logged_tx_ids.union(new_logged_tx_ids)
     save_logged_transactions(all_logged_tx_ids)
     
+    # Check for rent payments and update Notion Recurring database
+    print("\n🏠 Checking for rent payments...")
+    rent_result = check_and_update_rent_payment(all_transactions)
+    print(f"  ✅ Matched: {rent_result['matched_payments']}")
+    print(f"  📝 Updated pages: {rent_result['updated_pages']}")
+    if rent_result['errors'] > 0:
+        print(f"  ⚠️  Errors: {rent_result['errors']}")
+    
     # Print comprehensive sync summary
     total_processed = successful_transactions + failed_transactions
-    print(f"\n📊 Sync Summary:")
+    print("\n📊 Sync Summary:")
     print(f"  ✅ Successful: {successful_transactions}")
     print(f"  ❌ Failed: {failed_transactions}")
     print(f"  ⏭️  Skipped: {skipped_transactions}")
     print(f"  📝 Total Processed: {total_processed}")
     
     if failed_transactions > 0:
-        print(f"  💡 Run POST /retry-failed to retry failed transactions")
+        print("  💡 Run POST /retry-failed to retry failed transactions")
     
     return {
         "successful": successful_transactions,
         "failed": failed_transactions,
         "skipped": skipped_transactions,
-        "total_processed": total_processed
+        "total_processed": total_processed,
+        "rent_payments": rent_result
     }
 
 if __name__ == "__main__":
