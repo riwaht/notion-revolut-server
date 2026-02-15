@@ -1,175 +1,126 @@
-# Revolut → Notion Sync
+# Revolut to Notion Sync
 
-**Automatically sync your Revolut transactions to Notion with smart categorization and currency conversion!**
+Automatically sync Revolut transactions to Notion with categorization and currency conversion.
 
-This tool connects your Revolut account to Notion, automatically categorizing transactions, converting currencies, and organizing your financial data beautifully.
+> **Not a developer?** Don't worry, I built this repo to be easy to work with using AI tools like Claude Code or Cursor. Just open the project and ask for help! There's an `AGENTS.md` file that gives AI all the context it needs to guide you through setup and troubleshooting.
 
----
+## Features
 
-## What It Does
+- Auto-categorization (keyword matching + semantic similarity)
+- Currency conversion via Frankfurter API
+- Multi-account support via TrueLayer
+- Failed transaction retry queue
 
-- **Smart Categorization**: Automatically classifies expenses, income, and transfers
-- **Multi-Currency Support**: Converts all transactions to USD with historical exchange rates via Frankfurter API
-- **Cross-Account Sync**: Fetches transactions from ALL your Revolut accounts
-- **Dual Database Support**: Separate tracking for expenses and income in Notion
-- **OAuth2 Security**: Secure authentication with automatic token refresh
-- **Smart Fallback**: Falls back to predefined rates when exchange rate API is unavailable
+## Quick Start
 
----
+### 1. Copy the Notion Template
 
-## Your Notion, Your Way
+Duplicate the budget tracker template to your workspace:
 
-**Important**: This tool is designed around my specific Notion setup (separate expenses and income databases), but it's easily adaptable to yours!
+**[Get the Template](https://www.notion.com/templates/budget-tracker-automated)**
 
-You can:
-- **Use a Single Database**: Combine expenses and income into one database with a "Type" field
-- **Different Field Names**: Modify the field mappings to match your database properties
-- **Custom Categories**: Add more categorization logic for your specific needs
+This gives you pre-configured databases for Expenses, Income, Accounts, and Categories.
 
-The code is modular and well-documented, making it easy to customize.
+### 2. Get Your Database IDs
 
----
+For each database (Expenses, Income, Accounts, Categories), open it in Notion and copy the ID from the URL:
 
-## Quick Setup
+```
+https://notion.so/Your-Database-NAME?v=...
+                  ^^^^^^^^^^^^^^^^
+                  This is your database ID (32 characters)
+```
 
-### 1. **Get Started**
+### 3. Get Relation IDs
+
+For Account and Category relations, open each page and copy the ID from the URL:
+
+```
+https://notion.so/Category-Name-abc123...
+                                ^^^^^^
+                                This is the relation ID
+```
+
+### 4. Install & Configure
+
 ```bash
-git clone https://github.com/riwaht/notion-revolut-server.git
+git clone <repo-url>
 cd notion-revolut-server
-python -m venv venv
-# Windows: venv\Scripts\activate
-# Mac/Linux: source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### 2. **Configure Environment**
-Create a `.env` file:
+Edit `.env` with your IDs:
+
 ```env
-NOTION_TOKEN=your_notion_integration_token
-EXPENSES_DB_ID=your_expenses_database_id
-INCOME_DB_ID=your_income_database_id
-CUTOFF_DATE=2024-01-01  # Optional: only sync transactions after this date
+# Notion
+NOTION_TOKEN=secret_xxx
+EXPENSES_DB_ID=your_expenses_db_id
+INCOME_DB_ID=your_income_db_id
+
+# Account relation IDs (from your Accounts database)
+PRIMARY_ACCOUNT_ID=your_main_account_id
+
+# Category relation IDs (from your Categories database)
+CATEGORY_FOOD_ID=xxx
+CATEGORY_TRANSPORT_ID=xxx
+# ... add all your categories
+
+# TrueLayer (truelayer.com)
+# 1. Create application → 2. Copy client_id & client_secret
+# 3. Make it live (not sandbox) → 4. Set redirect URI
+TL_CLIENT_ID=xxx
+TL_CLIENT_SECRET=xxx
+TL_REDIRECT_URI=http://localhost:8000/callback
+TL_PROVIDER=uk-ob-revolut  # or pl-ob-revolut, fr-ob-revolut, etc.
 ```
 
-### 3. **Set Up Notion**
-1. Create integration at [notion.so/my-integrations](https://notion.so/my-integrations)
-2. Share your databases with the integration
-3. Copy database IDs from the URLs
+### 5. Run
 
-### 4. **Authenticate & Run**
 ```bash
 python app.py
 ```
 
-Follow the prompts to complete OAuth2 authentication. Your tokens will be saved automatically.
+First time: visit `GET /auth`, complete OAuth, then `POST /auth/exchange`.
 
----
+Sync: `POST /sync`
 
-## Usage
+## API Endpoints
 
-### **Manual Sync**
-```bash
-python app.py
-```
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth` | GET | Get OAuth URL |
+| `/auth/exchange` | POST | Exchange auth code |
+| `/sync` | POST | Sync transactions |
+| `/retry-failed` | POST | Retry failed |
 
-### **API Endpoints**
-- **GET `/`**: Check server status
-- **POST `/sync`**: Trigger manual sync
+## Customization
 
-### **Automated Scheduling**
-I run this daily at 9 AM using Make. You can use:
-- Cron jobs (Linux/Mac)
-- Task Scheduler (Windows)
-- Cloud platforms (Make, Zapier, n8n)
-- GitHub Actions
+**Categories**: Edit `data/categories.json` to add keywords for your categories.
 
----
+**LLM Integration**: For smarter categorization, modify `src/notion/category_mapper.py` to call an LLM API (Mistral offers a free tier ;)).
+
+**Notion Fields**: Adjust `src/notion/notion_utils.py` to match your database schema.
 
 ## Project Structure
 
 ```
-revolut_server/
-├── app.py                          # FastAPI server
+├── app.py                    # FastAPI server
 ├── src/
-│   ├── revolut/notion_revolut_connector.py  # Main sync logic
-│   ├── notion/                     # Notion API operations
-│   └── utils/exchange_utils.py     # Currency conversion
-├── data/                           # Cached data
-└── tests/                          # Unit tests
+│   ├── revolut/              # TrueLayer OAuth & sync
+│   ├── notion/               # Notion API & categorization
+│   └── utils/                # Currency conversion
+├── data/
+│   ├── categories.json              # Category keywords
+│   └── exchange_rates_cache.json    # Caches rates, e.g. EUR_USD_2024-01-15: 1.08
+└── tests/
 ```
 
----
+## Hosting
 
-## Testing
+I host this on DigitalOcean App Platform (free tier via GitHub integration) with a cron job that calls `POST /sync` daily.
 
-```bash
-python -m unittest discover -s tests -p "test_*.py"
-```
+## License
 
----
-
-## **Currency Conversion System**
-
-The app uses the **Frankfurter API** for accurate historical exchange rate conversion:
-
-- **Historical Accuracy**: Fetches actual exchange rates for the transaction date
-- **Decimal Precision**: Uses Python's Decimal type for financial accuracy
-- **Smart Fallback**: Falls back to predefined rates if API is unavailable
-- **Supported Currencies**: PLN, EUR, USD, GBP, CHF, AED, CAD, TRY, HUF, and more
-- **Date Validation**: Ensures no future dates are used for historical rates
-
-**Example**: A €50.00 transaction from March 15, 2024 will use the actual EUR→USD rate from that specific date, ensuring your financial records reflect real historical values.
-
----
-
-## **Data Flow**
-1. **Authentication** → Revolut OAuth2 flow
-2. **Transaction Fetch** → Get all transactions from Revolut API
-3. **Categorization** → Analyze and classify each transaction
-4. **Currency Conversion** → Convert to USD using historical rates from Frankfurter API
-5. **Notion Sync** → Create database entries with mapped properties
-
-### **Key Features**
-- **Modular Design**: Each component handles a specific responsibility
-- **Error Handling**: Graceful failure recovery at each step
-- **Precision**: Uses historical exchange rates and Decimal precision for accurate conversions
-- **API Integration**: Modern REST API approach with Frankfurter for exchange rates
-- **Configurable**: Easy to adapt for different Notion structures
-
----
-
-## Customization
-
-The modular design makes it easy to:
-- **Adapt to your Notion structure** (single database, different fields)
-- **Add new features** (webhooks, analytics, notifications)
-- **Extend categorization** logic for your needs
-
----
-
-## Contributing
-
-Found a bug? Want to add a feature? Contributions are welcome!
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
----
-
-## Contact
-
-Have questions or need help setting this up? Feel free to reach out!
-
-- **GitHub Issues**: [Create an issue](https://github.com/riwaht/notion-revolut-server/issues) for bugs or feature requests
-- **Email**: [riwa.hoteit@gmail.com](mailto:riwa.hoteit@gmail.com)  
-- **LinkedIn**: [LinkedIn](https://www.linkedin.com/in/riwa-hoteit-7236b6204/)
-
-
----
-
-**Ready to transform your financial tracking? Let's sync!**
-
-
+MIT
