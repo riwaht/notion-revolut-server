@@ -84,6 +84,20 @@ python -m pytest tests/
 ### LLM categorization
 Replace `categorize_transaction()` in `category_mapper.py` with an LLM call. Mistral has a free tier.
 
+## Do Not Modify Without Asking
+
+These values are environment-specific and user-configured. Changing them breaks things silently:
+
+- **TrueLayer provider ID** (`TL_PROVIDER` in `.env`) — must match user's country (e.g., `uk-ob-revolut`, `pl-ob-revolut`)
+- **TrueLayer redirect URI** (`TL_REDIRECT_URI`) — must match what's configured in TrueLayer dashboard
+- **`.env` values or defaults** — never overwrite, change defaults, or remove env vars
+- **Notion database property names** — `Name`, `Amount`, `Date`, `Category`, `Account`, `Month`, `Year` are from the template
+- **Category/Account relation IDs** — user-specific, discovered via `scripts/setup_notion.py`
+- **Transfer detection keywords** in `category_mapper.py` — `exchanged to`, `exchanged from`, `vault`, `transfer`
+- **OAuth redirect URIs** — changing breaks the auth flow
+
+When in doubt, ask: "Should I change X? Currently it's set to Y."
+
 ## Environment Variables
 
 Required:

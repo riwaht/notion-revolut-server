@@ -2,6 +2,8 @@
 
 Automatically sync Revolut transactions to Notion with categorization and currency conversion.
 
+Works with **Revolut Individual** (personal accounts). Not tested with Revolut Business.
+
 > **Not a developer?** Don't worry, I built this repo to be easy to work with using AI tools like Claude Code or Cursor. Just open the project and ask for help! There's an `AGENTS.md` file that gives AI all the context it needs to guide you through setup and troubleshooting.
 
 ## Features
@@ -51,21 +53,13 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` with your IDs:
+Edit `.env` with your core settings:
 
 ```env
 # Notion
 NOTION_TOKEN=secret_xxx
 EXPENSES_DB_ID=your_expenses_db_id
 INCOME_DB_ID=your_income_db_id
-
-# Account relation IDs (from your Accounts database)
-PRIMARY_ACCOUNT_ID=your_main_account_id
-
-# Category relation IDs (from your Categories database)
-CATEGORY_FOOD_ID=xxx
-CATEGORY_TRANSPORT_ID=xxx
-# ... add all your categories
 
 # TrueLayer (truelayer.com)
 # 1. Create application → 2. Copy client_id & client_secret
@@ -76,7 +70,19 @@ TL_REDIRECT_URI=http://localhost:8000/callback
 TL_PROVIDER=uk-ob-revolut  # or pl-ob-revolut, fr-ob-revolut, etc.
 ```
 
-### 5. Run
+> **TrueLayer note**: When creating your app, select **Revolut Individual** (not Business). The free tier has rate limits; the Data API product may require contacting TrueLayer sales depending on your region.
+
+### 5. Auto-Discover Notion IDs
+
+Instead of manually copying 15+ category and account IDs, run the setup script:
+
+```bash
+python scripts/setup_notion.py
+```
+
+This queries your Notion databases, finds all Category and Account pages, and writes their IDs to `.env` automatically. You'll be prompted to assign accounts to PRIMARY/SECONDARY roles.
+
+### 6. Run
 
 ```bash
 python app.py
@@ -97,7 +103,20 @@ Sync: `POST /sync`
 
 ## Customization
 
-**Categories**: Edit `data/categories.json` to add keywords for your categories.
+### Categories
+
+Transactions are categorized using this priority chain:
+
+1. **Transfer keywords** — `exchanged to`, `vault`, `transfer` (hardcoded, highest priority)
+2. **Keyword matching** — matches transaction description against `data/categories.json`
+3. **Semantic similarity** — uses sentence embeddings to find the closest category (threshold: 0.2)
+4. **Default** — falls back to "Other"
+
+To add or modify categories:
+
+1. Create the category page in your Notion Categories database
+2. Re-run `python scripts/setup_notion.py` to pick up the new ID
+3. Add keywords to `data/categories.json` under `expenses` or `income`
 
 **LLM Integration**: For smarter categorization, modify `src/notion/category_mapper.py` to call an LLM API (Mistral offers a free tier ;)).
 
@@ -120,6 +139,17 @@ Sync: `POST /sync`
 ## Hosting
 
 I host this on DigitalOcean App Platform (free tier via GitHub integration) with a cron job that calls `POST /sync` daily.
+
+## Privacy & Data Handling
+
+- All data is processed locally and sent only to **your own** Notion workspace
+- No third-party analytics or telemetry
+- OAuth tokens stored locally in `data/tokens.json` (gitignored)
+- External services used:
+  - **TrueLayer** — reads your bank transactions (OAuth-authorized)
+  - **Notion API** — writes to your databases
+  - **Frankfurter API** — public exchange rates (no auth required)
+- No server-side database — all state is local JSON files
 
 ## License
 
